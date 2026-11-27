@@ -46,7 +46,7 @@ const URL = 'http://localhost:8766/';
   const A = page, B = await ctx.newPage();
   B.on('pageerror', e => errs.push('B ' + e.message));
   await A.goto(URL + '#nemo'); await B.goto(URL + '#nemo');
-  await A.click('.seg-btn:text("온라인 경주")'); await B.click('.seg-btn:text("온라인 경주")');
+  await A.click('.seg-btn:text("온라인 대결")'); await B.click('.seg-btn:text("온라인 대결")');
   await A.fill('#nemo-nick', '방장'); await A.click('button:has-text("온라인 방 만들기")'); await A.waitForSelector('.lobby .code-tiles');
   const code = (await A.getAttribute('.lobby .code-tiles', 'data-code')).trim();
   await B.fill('#nemo-nick', '친구'); await B.fill('#nemo-code', code); await B.click('button:has-text("참가하기")');

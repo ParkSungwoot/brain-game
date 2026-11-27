@@ -78,9 +78,22 @@
     }
     const progRow = h('div', { class: 'progs' }, h('span', { class: 'progs-label' }, '프로그램별 게임'),
       PROGRAMS.map((p) => (chips[p.id] = h('button', { class: 'prog-chip', type: 'button', 'aria-expanded': 'false', 'aria-controls': 'prog-' + p.id, onclick: () => toggle(p.id) }, p.label, h('span', { class: 'caret', 'aria-hidden': 'true' }, '▾')))));
+    // 동시 접속자 (Firebase 판에서만): 무료 요금제는 동시에 100명까지 연결돼요
+    const onlineEl = h('p', { class: 'online-count', hidden: true, 'aria-live': 'polite' });
+    if (App.fire && App.fire.enabled()) {
+      main._cleanup = App.fire.onCount((n) => {
+        if (n == null) { onlineEl.hidden = true; return; }
+        const lim = App.fire.limit;
+        onlineEl.hidden = false;
+        onlineEl.classList.toggle('full', n >= lim * 0.9);
+        onlineEl.textContent = '';
+        onlineEl.append(h('span', { class: 'dot', 'aria-hidden': 'true' }), '동시 접속자 ', h('b', null, String(n)), ' / ' + lim, n >= lim * 0.9 ? ' · 곧 가득 차요' : '');
+      });
+    }
     const hero = h('section', { class: 'hero' },
       h('h1', { class: 'title sr-only' }, '두뇌 서바이벌에 내가 참가한다면?'),
       h('p', { class: 'eyebrow' }, '두뇌 서바이벌 게임 ' + (['', '한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열', '열한', '열두', '열세', '열네', '열다섯'][App.games.length] || App.games.length) + ' 가지'),
+      onlineEl,
       h('p', { class: 'lede' }, '서바이벌 예능에서 본 두뇌 게임의 규칙을 바탕으로 만든 웹 버전입니다. 퍼즐은 매번 새 문제가 만들어지고, 여러 명이 하는 게임은 방 코드로 친구와 동시에 접속해 즐길 수 있어요.'),
       h('ul', { class: 'how' },
         h('li', null, h('b', null, '혼자'), ' 퍼즐은 크기·숫자·배치가 매번 달라요'),
@@ -193,8 +206,9 @@
       root.append(v.el);
       current = { id: g.id, cleanup: v.cleanup };
     } else {
-      root.append(homeView(prog && prog.id));
-      current = { id: want, cleanup: null };
+      const hv = homeView(prog && prog.id);
+      root.append(hv);
+      current = { id: want, cleanup: hv._cleanup || null };
     }
     window.scrollTo(0, 0);
   }

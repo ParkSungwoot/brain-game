@@ -36,17 +36,39 @@
     }
     const cred = await F.signInAnonymously(auth);
     F.onValue(F.ref(db, '.info/serverTimeOffset'), (s) => { offset = Number(s.val()) || 0; });
-    return { F, db, uid: cred.user.uid, connRef: F.ref(db, '.info/connected') };
+    const K = { F, db, uid: cred.user.uid, connRef: F.ref(db, '.info/connected') };
+    startOnline(K);
+    return K;
+  }
+
+  // ----- 동시 접속자: online/{접속 id} 에 내 칸을 두고 개수를 셈 -----
+  let count = null;
+  const countSubs = new Set();
+  function startOnline(K) {
+    const F = K.F;
+    const me = F.ref(K.db, 'online/' + rid());
+    F.onValue(K.connRef, (s) => {
+      if (s.val() !== true) return;
+      F.set(me, { u: K.uid, t: F.serverTimestamp() }).then(() => F.onDisconnect(me).remove()).catch(() => {});
+    });
+    F.onValue(F.ref(K.db, 'online'), (snap) => {
+      count = snap.exists() ? Object.keys(snap.val() || {}).length : 0;
+      for (const fn of countSubs) { try { fn(count); } catch (e) { /* 무시 */ } }
+    }, () => {});
+    // 화면이 1분 넘게 가려져 있고 방에도 없으면 연결을 끊어 접속 자리를 비워 둠
+    let hideT = null;
+    document.addEventListener('visibilitychange', () => {
+      clearTimeout(hideT);
+      if (document.hidden) hideT = setTimeout(() => { if (live === 0) { try { F.goOffline(K.db); } catch (e) { /* 무시 */ } } }, 60000);
+      else { try { F.goOnline(K.db); } catch (e) { /* 무시 */ } }
+    });
   }
   function kit() {
     if (!kitP) { kitP = boot(); kitP.catch(() => { kitP = null; }); }
     return kitP;
   }
   function online(K) { live++; clearTimeout(offTimer); try { K.F.goOnline(K.db); } catch (e) { /* 무시 */ } }
-  function offline(K) {
-    live = Math.max(0, live - 1);
-    if (live === 0) { clearTimeout(offTimer); offTimer = setTimeout(() => { if (live === 0) { try { K.F.goOffline(K.db); } catch (e) { /* 무시 */ } } }, 4000); }
-  }
+  function offline() { live = Math.max(0, live - 1); }
 
   class FireRoom {
     constructor(K, name) {
@@ -112,7 +134,7 @@
       this.subs.clear(); this.errs.clear();
       try { await this.F.onDisconnect(this.mine).cancel(); } catch (e) { /* 무시 */ }
       try { await this.F.remove(this.mine); } catch (e) { /* 무시 */ }
-      offline(this.K);
+      offline();
     }
   }
 
@@ -124,5 +146,36 @@
       return r.open();
     },
     now: () => Date.now() + offset,
+    // 동시 접속자 수 (첫 화면 표시용). fn(n) 은 바뀔 때마다 불림
+    onCount(fn) {
+      countSubs.add(fn);
+      if (count != null) fn(count);
+      kit().catch(() => fn(null));
+      return () => countSubs.delete(fn);
+    },
+    limit: 100,
+    uid: async () => (await kit()).uid,
+    // 기록 저장: results/{묶음}/{내 uid} = { n: 이름, r: 문제별 기록, at } (처음 한 번만 쓸 수 있음)
+    async saveResult(key, name, r) {
+      const K = await kit(), F = K.F;
+      try { await F.set(F.ref(K.db, 'results/' + key + '/' + K.uid), { n: String(name).slice(0, 24), r, at: F.serverTimestamp() }); return true; } catch (e) { return false; }
+    },
+    async results(key) {
+      const K = await kit(), F = K.F;
+      const v = (await F.get(F.ref(K.db, 'results/' + key))).val() || {};
+      return Object.keys(v).map((u) => ({ uid: u, me: u === K.uid, name: v[u].n, r: v[u].r, at: v[u].at }));
+    },
+    // 기록 대결 문제 묶음: sets/{게임-방코드} = { u, key, d: JSON(설정·시드), at } → 나중에 같은 방 코드로 온 사람이 풀 수 있게
+    async putSet(name, key, d) {
+      const K = await kit(), F = K.F;
+      try { await F.set(F.ref(K.db, 'sets/' + name), { u: K.uid, key, d: JSON.stringify(d), at: F.serverTimestamp() }); return true; } catch (e) { return false; }
+    },
+    async getSet(name) {
+      const K = await kit(), F = K.F;
+      try {
+        const v = (await F.get(F.ref(K.db, 'sets/' + name))).val();
+        return v ? Object.assign({ key: v.key, at: v.at }, JSON.parse(v.d)) : null;
+      } catch (e) { return null; }
+    },
   };
 })();

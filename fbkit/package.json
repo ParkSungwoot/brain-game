@@ -4,7 +4,7 @@
   "description": "Firebase SDK 묶음(fb.js) 만들기와 로컬 에뮬레이터 시험 도구",
   "scripts": {
     "bundle": "esbuild fb-entry.js --bundle --minify --format=iife --target=es2019 --legal-comments=eof --outfile=fb.js",
-    "emulators": "firebase emulators:start --only database,auth --project psw-brain-survival",
+    "emulators": "cd .. && fbkit/node_modules/.bin/firebase emulators:start --only database,auth --project psw-brain-survival",
     "rules-test": "node rules-test.mjs"
   },
   "license": "UNLICENSED",

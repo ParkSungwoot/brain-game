@@ -3,7 +3,9 @@
 방송 「데블스 플랜3」에 나온 두뇌 게임 열 가지를 웹에서 직접 해 볼 수 있게 만든 팬 메이드 사이트입니다. 방송사와는 관계가 없습니다.
 
 - 사이트: https://parksungwoot.github.io/brain-game/
-- 혼자 풀기, 컴퓨터와 대전, 친구와 온라인 방(방 코드), 대결 코드(같은 문제를 같이 시작해 순위 비교)
+- 혼자 연습, 오늘의 문제(날마다 같은 문제로 전체 순위·상위 %·평균 시간), 컴퓨터와 대결
+- 친구와 온라인 대결(방 코드 4자리): 빨리 맞히기(개인전·팀전) / 기록 대결(같이 시작, 진행 상황 공유, 나중에 같은 코드로 푼 사람도 순위에 합쳐짐)
+- 첫 화면에 동시 접속자 수 (무료 요금제는 동시 100명까지)
 - 온라인 연결은 Firebase Realtime Database + 익명 로그인 (무료 요금제, 플레이어 로그인 없음)
 
 ## 브랜치
@@ -21,7 +23,8 @@ assets/            배너·미리보기 이미지, 픽셀 글꼴(Galmuri, SIL OF
 build.js           한 장짜리 HTML 만들기
 site.config.json   사이트 주소, Firebase 웹 설정(공개용 값)
 database.rules.json  Firebase 보안 규칙 (콘솔의 Realtime Database → 규칙 에 붙여 넣음)
-fbkit/             Firebase SDK 묶음(fb.js) 만들기, 로컬 에뮬레이터, 규칙 시험
+firebase.json      로컬 에뮬레이터 설정
+fbkit/             Firebase SDK 묶음(fb.js) 만들기, 로컬 에뮬레이터 실행, 규칙 시험
 test/              Playwright·Node 점검 스크립트
 ```
 
@@ -53,10 +56,10 @@ cd ../pages && git add -A && git commit -m "사이트 업데이트" && git push 
 
 ```bash
 cd fbkit && npm run emulators        # Firebase 에뮬레이터 (Java 필요)
-cd fbkit && npm run rules-test       # 보안 규칙 13가지 경우 점검
+cd fbkit && npm run rules-test       # 보안 규칙 30가지 경우 점검
 (cd site && python3 -m http.server 8791)
 node test/fire.test.js               # 두 기기로 온라인 방 점검
-node test/fire-chal.test.js          # 대결 코드 실시간(카운트다운·진행·결과) 점검
+node test/fire-v2.test.js            # 오늘의 문제·기록 대결·팀전·동시 접속자 점검 (세 기기)
 ```
 
 ## 출처

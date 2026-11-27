@@ -14,6 +14,41 @@
           }
         }
       }
+    },
+    "online": {
+      ".read": "auth != null",
+      "$conn": {
+        ".write": "auth != null && $conn.matches(/^[a-z0-9]{8,24}$/) && (!data.exists() || data.child('u').val() === auth.uid)",
+        ".validate": "newData.hasChildren(['u', 't']) && newData.child('u').val() === auth.uid",
+        "u": { ".validate": "newData.isString()" },
+        "t": { ".validate": "newData.isNumber() && newData.val() <= now + 60000" },
+        "$other": { ".validate": false }
+      }
+    },
+    "results": {
+      "$set": {
+        ".read": "auth != null && $set.matches(/^[a-z0-9-]{3,60}$/)",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid && !data.exists() && $set.matches(/^[a-z0-9-]{3,60}$/)",
+          ".validate": "newData.hasChildren(['n', 'r', 'at'])",
+          "n": { ".validate": "newData.isString() && newData.val().length <= 30" },
+          "r": { ".validate": "newData.isString() && newData.val().length <= 400" },
+          "at": { ".validate": "newData.isNumber() && newData.val() === now" },
+          "$other": { ".validate": false }
+        }
+      }
+    },
+    "sets": {
+      "$name": {
+        ".read": "auth != null && $name.matches(/^[a-z0-9-]{3,40}$/)",
+        ".write": "auth != null && $name.matches(/^[a-z0-9-]{3,40}$/) && (!data.exists() || data.child('u').val() === auth.uid || data.child('at').val() < now - 21600000)",
+        ".validate": "newData.hasChildren(['u', 'key', 'd', 'at']) && newData.child('u').val() === auth.uid",
+        "u": { ".validate": "newData.isString()" },
+        "key": { ".validate": "newData.isString() && newData.val().length <= 60" },
+        "d": { ".validate": "newData.isString() && newData.val().length <= 800" },
+        "at": { ".validate": "newData.isNumber() && newData.val() === now" },
+        "$other": { ".validate": false }
+      }
     }
   }
 }

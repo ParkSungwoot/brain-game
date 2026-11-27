@@ -718,3 +718,21 @@ tr.me td { background: var(--accent-soft); }
 .live-strip[hidden] { display: none; }
 .center-text { text-align: center; }
 @media (prefers-reduced-motion: reduce) { .count-big.tick { animation: none; } }
+
+/* ---------- 팀전 ---------- */
+.team-btn.t0, .team-tag.t0, .team-pill.t0 { border-color: var(--p0); color: var(--p0); }
+.team-btn.t1, .team-tag.t1, .team-pill.t1 { border-color: var(--p1); color: var(--p1); }
+.seat-dot.t0 { background: var(--p0); }
+.seat-dot.t1 { background: var(--p1); }
+.mode-note { margin: 0; line-height: 1.6; }
+.rank-box { display: grid; gap: 10px; }
+.rank-box .result-box { margin-top: 0; }
+.all-rank { display: grid; gap: 8px; justify-items: center; margin-top: 12px; }
+
+/* ---------- 첫 화면 동시 접속자 ---------- */
+.online-count { width: fit-content; justify-self: start; display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 10px; padding: 4px 10px; border: 2px solid var(--line-strong); background: var(--surface); font-size: 13px; color: var(--muted); }
+.online-count b { color: var(--ink); font-family: var(--font-mono); }
+.online-count .dot { width: 8px; height: 8px; background: var(--sig-g); box-shadow: 0 0 0 2px #000; animation: blink 1.4s steps(2, start) infinite; }
+.online-count.full { border-color: var(--accent); }
+.online-count.full .dot { background: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .online-count .dot { animation: none; } }

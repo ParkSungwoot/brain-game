@@ -3,7 +3,7 @@ const S = require('os').tmpdir() + '/bgr-shots/';
 const URL = 'file://' + __dirname + '/../dist/preview.html';
 (async () => { const b = await chromium.launch(); const errs = [];
   const p = await b.newPage({ viewport: { width: 1000, height: 1100 } }); p.on('pageerror', e => errs.push(e.message));
-  await p.goto(URL + '#nemo'); await p.click('.seg-btn:text("온라인 경주")');
+  await p.goto(URL + '#nemo'); await p.click('.seg-btn:text("온라인 대결")');
   await p.click('button:has-text("바로 시작")'); await p.click('button:has-text("+ 컴퓨터")'); await p.click('button:has-text("+ 컴퓨터")');
   await p.click('.seg-btn:text("3판")'); await p.click('button:has-text("게임 시작")');
   for (let r = 0; r < 3; r++) {

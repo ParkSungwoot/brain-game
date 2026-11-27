@@ -186,7 +186,7 @@
       const e = this.engine;
       this.W = {
         g: this.gameId, ph: 'lobby', v: 0,
-        pl: [{ p: this.myPeer || 'host', n: this.nick, b: 0, on: 1 }],
+        pl: [{ p: this.myPeer || 'host', n: this.nick, b: 0, on: 1, tm: 0 }],
         o: Object.assign({}, e.defaultOpts || {}),
         s: null, ak: [], er: null, dl: [], res: null,
       };
@@ -222,7 +222,7 @@
         // 새로 온 사람 넣기
         for (const [peer, p] of present) {
           if (!W.pl.some((x) => x.p === peer) && W.pl.length < this.engine.maxPlayers) {
-            W.pl.push({ p: peer, n: App.cleanNick(p.presence.nick), b: 0, on: 1 });
+            W.pl.push({ p: peer, n: App.cleanNick(p.presence.nick), b: 0, on: 1, tm: this._nextTeam() });
             changed = true;
           }
         }
@@ -274,7 +274,7 @@
         W.ph = 'end';
         W.res = e.results ? e.results(this.G) : null;
         // 유배지 한 명은 방장 화면에서 한 번만 정해서 모두에게 같은 결과를 보냄
-        if (W.res && Array.isArray(W.res.scores) && W.res.exile === undefined) {
+        if (W.res && Array.isArray(W.res.scores) && W.res.exile === undefined && !W.res.places) {
           const [ex, how] = pickExile(W.res.scores, W.res.tb);
           W.res.exile = ex;
           W.res.exileHow = how;
@@ -397,8 +397,24 @@
       const names = e.botNames || ['컴퓨터 A', '컴퓨터 B', '컴퓨터 C', '컴퓨터 D', '컴퓨터 E', '컴퓨터 F', '컴퓨터 G'];
       const used = new Set(W.pl.map((x) => x.n));
       const n = names.find((x) => !used.has(x)) || '컴퓨터';
-      W.pl.push({ p: 'bot' + rid().slice(0, 6), n, b: 1, on: 1 });
+      W.pl.push({ p: 'bot' + rid().slice(0, 6), n, b: 1, on: 1, tm: this._nextTeam() });
       if (!silent) this._publish();
+    }
+    // 팀전: 인원이 적은 팀으로 넣음
+    _nextTeam() { const c = [0, 0]; for (const x of this.W.pl) c[x.tm ? 1 : 0]++; return c[0] <= c[1] ? 0 : 1; }
+    setSeatProp(i, k, v) {
+      const W = this.W;
+      if (!this.isHost || W.ph !== 'lobby' || !W.pl[i]) return;
+      W.pl[i][k] = v;
+      this._publish();
+    }
+    autoTeams() {
+      const W = this.W;
+      if (!this.isHost || W.ph !== 'lobby') return;
+      const idx = W.pl.map((_, i) => i);
+      for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
+      idx.forEach((seat, k) => { W.pl[seat].tm = k % 2; });
+      this._publish();
     }
     removeSeat(i) {
       const W = this.W;
@@ -415,7 +431,8 @@
       const W = this.W, e = this.engine;
       if (!this.isHost) return;
       if (W.pl.length < e.minPlayers) { App.toast('최소 ' + e.minPlayers + '명이 필요해요.', 'warn'); return; }
-      this.G = e.start(W.pl.map((x) => ({ n: x.n, b: !!x.b })), W.o);
+      if (e.canStart) { const why = e.canStart(W); if (why) { App.toast(why, 'warn'); return; } }
+      this.G = e.start(W.pl.map((x) => ({ n: x.n, b: !!x.b, tm: x.tm ? 1 : 0 })), W.o, { code: this.mode === 'local' ? null : this.code, gameId: this.gameId });
       W.ph = 'play';
       W.gn = (W.gn || 0) + 1;
       W.res = null;
@@ -491,7 +508,7 @@
   function announcement(W, mySeat) {
     const scores = W.res && Array.isArray(W.res.scores) ? W.res.scores : null;
     if (!scores || scores.length !== W.pl.length || W.pl.length < 2) return null;
-    const places = assignPlaces(scores, W.res.exile);
+    const places = Array.isArray(W.res.places) ? W.res.places : assignPlaces(scores, W.res.exile);
     const order = [...W.pl.keys()].sort((a, b) => ({ live: 0, prison: 1, exile: 2 })[places[a]] - ({ live: 0, prison: 1, exile: 2 })[places[b]]);
     return h('section', { class: 'announce', 'aria-label': '숙소 배정 안내' },
       h('p', { class: 'announce-head' }, '📢 안내 방송'),
@@ -601,6 +618,7 @@
                 i === s.mySeat ? tag('나') : null,
                 p.b ? tag('컴퓨터') : null,
                 !p.on ? tag('연결 끊김', 'warn') : null),
+              cfg.seatExtra ? cfg.seatExtra(s, i, p) : null,
               s.isHost && i !== 0 && W.ph === 'lobby' ? h('button', { class: 'btn tiny ghost seat-x', onclick: () => s.removeSeat(i), 'aria-label': p.n + ' 빼기' }, '빼기') : null));
           } else {
             cells.push(h('li', { class: 'seat empty' },
@@ -617,6 +635,13 @@
         if (s !== session) return;
         App.clear(view);
         if (s.status === 'connecting') { view.append(h('div', { class: 'center-msg' }, '방에 연결하는 중…')); return; }
+        if (s.status === 'nohost' && cfg.lateJoin) {
+          const box = h('div', { class: 'center-msg' }, h('p', null, '방을 찾는 중…'));
+          view.append(box);
+          if (!s._late) s._late = cfg.lateJoin(s.code);
+          s._late.then((el) => { if (session !== s || !box.isConnected) return; App.clear(box); if (el) box.replaceWith(el(leave)); else box.append(h('p', null, s.error), h('button', { class: 'btn', onclick: leave }, '처음으로')); });
+          return;
+        }
         if (s.status === 'failed' || s.status === 'nohost' || s.status === 'hostleft') {
           view.append(h('div', { class: 'center-msg' }, h('p', null, s.error || '연결에 문제가 생겼어요.'), h('button', { class: 'btn', onclick: leave }, '처음으로')));
           return;

@@ -194,6 +194,7 @@
       App.magic.lastPuzzle = pz; // 점검용
       vals = pz.given.slice();
       t0 = Date.now(); solved = false; hints = 0; sel = null; armed = null;
+      if (App.music) App.music.claim('magic'); // 푸는 동안 배경 음악
       draw();
     }
 
@@ -359,6 +360,7 @@
           wrap.querySelectorAll('input.mg-cell').forEach((x) => { x.readOnly = true; });
           sel = null; armed = null; paintPick();
           tray.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+          if (App.music) App.music.release('magic');
           ctx.finished({});
         } else {
           const bad = [];
@@ -388,7 +390,7 @@
       if (el && !solved) el.textContent = App.fmtTime(Date.now() - t0);
     }, 500);
     fresh();
-    return () => clearInterval(timerId);
+    return () => { clearInterval(timerId); if (App.music) App.music.release('magic'); };
   }
 
   App.games.push({

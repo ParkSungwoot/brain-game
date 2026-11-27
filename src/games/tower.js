@@ -333,7 +333,9 @@
     const pk = rk + ':' + st.ph;
     if (L.pk !== pk) { L.pk = pk; L.bid = null; L.sel = null; }
     if (L.vk !== W.v) { L.vk = W.v; L.until = Date.now() + (st.rem || 0); }
-    const timer = (label) => h('span', { class: 'pill' }, label + ' ', h('b', { 'data-until': String(L.until) }, App.leftText(L.until - Date.now())));
+    // 나와 관계있는 단계 시간이면 data-hurry: 15초 안쪽에서 배경 음악이 빨라짐
+    const mine = me >= 0 && (st.ph === 'buzz' || (st.ph === 'under' && !st.done[me]) || (st.ph === 'try' && st.att && st.att.s === me));
+    const timer = (label) => h('span', { class: 'pill' }, label + ' ', h('b', { 'data-until': String(L.until), 'data-hurry': mine ? '1' : null }, App.leftText(L.until - Date.now())));
     const active = (i) => (st.ph === 'buzz') || (st.ph === 'under' && !st.done[i]) || (st.ph === 'try' && st.att.s === i);
 
     g.append(h('div', { class: 'wl-head' },
@@ -449,11 +451,12 @@
 
     function newGame() {
       G = { B: C.makeBlocks(NB, PLAIN), T: C.randomTowers(NB), round: 0, score: 0, log: [], used: new Set(), sel: null, flip: false };
+      if (App.music) App.music.claim('tower-solo'); // 연습하는 동안 배경 음악
       nextRound();
     }
     function nextRound() {
       G.round++;
-      if (G.round > SOLO_ROUNDS) { G.phase = 'over'; draw(); return; }
+      if (G.round > SOLO_ROUNDS) { G.phase = 'over'; if (App.music) App.music.release('tower-solo'); draw(); return; }
       const want = G.round <= 2 ? 2 + (G.round - 1) : R.pick([3, 4]);
       let goal = C.pickGoal(G.B, G.T, want, G.used);
       if (!goal) { G.T = C.randomTowers(NB); goal = C.pickGoal(G.B, G.T, want, G.used); }
@@ -525,7 +528,7 @@
         h('button', { class: 'btn primary', onclick: nextRound }, G.round >= SOLO_ROUNDS ? '최종 결과 보기' : '다음 라운드')));
     }
     newGame();
-    return () => {};
+    return () => { if (App.music) App.music.release('tower-solo'); };
   }
 
   function mount(root, ctx) {

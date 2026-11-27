@@ -210,16 +210,19 @@
 
   // ---------- 문제 묶음 풀기 (혼자 연습·오늘의 문제·기록 대결 공용) ----------
   // cfg: { seeds, opts, toolbar(): el|null, label, onEnd(results) }
+  let tuneNo = 0;
   function problemSet(wrap, ctx, def, cfg) {
     const seeds = cfg.seeds, N = seeds.length, opts = cfg.opts;
     let round = 0, cur = null, dead = false;
     const results = [];
+    const tune = 'set:' + def.id + ':' + (++tuneNo); // 배경 음악: 문제를 푸는 동안
+    const music = (play) => { if (App.music) { if (play) App.music.claim(tune); else App.music.release(tune); } };
 
     function next() {
       if (dead) return;
       if (cur && cur.comp && cur.comp.destroy) cur.comp.destroy();
       round++;
-      if (round > N) { cur = null; stop(); cfg.onEnd(results.slice()); return; }
+      if (round > N) { cur = null; stop(); music(false); cfg.onEnd(results.slice()); return; }
       const pz = puzzleOf(def, seeds[round - 1], opts);
       App.quick.lastPuzzle = pz; // 점검용
       cur = { pz, t0: Date.now(), wrong: 0, lockUntil: 0, done: false, ok: false };
@@ -293,9 +296,10 @@
       if (el && cur && !cur.done) el.textContent = App.fmtTime(Date.now() - cur.t0);
     }, 500);
     function stop() { clearInterval(clock); }
+    music(true);
     next();
     return {
-      destroy() { dead = true; stop(); if (cur && cur.comp && cur.comp.destroy) cur.comp.destroy(); },
+      destroy() { dead = true; stop(); music(false); if (cur && cur.comp && cur.comp.destroy) cur.comp.destroy(); },
     };
   }
 
@@ -349,6 +353,12 @@
   // ---------- 기록·순위 공용 도구 ----------
   const SHARE_URL = App.SHARE_URL || 'https://claude.ai/artifact/7PS8wBkQySgG8HmrkLpRRG';
   const hasServer = () => !!(App.fire && App.fire.enabled && App.fire.enabled());
+  // 서버에 붙을 수 있으면 요청, 아니면 {code:'full'} 로 실패 (가득 찬 동안 요청이 끝없이 멈춰 있는 것을 막음)
+  async function serverCall(fn, ms) {
+    if (!(await App.fire.ready(9000))) throw { code: 'full' };
+    return App.fire.wait(fn(), ms || 10000);
+  }
+  const downNote = (e) => (e && (e.code === 'full' || e.code === 'timeout') ? App.fire.problemText() : '서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.');
   const myNick = () => App.cleanNick(App.store.get('nick', ''));
   const pad2 = (x) => String(x).padStart(2, '0');
   function optLabel(def, opts) {
@@ -413,8 +423,18 @@
   // 서버에 모인 기록으로 순위 상자 (N명 중 N위, 상위 %, 평균 시간)
   function rankBox(key, n, o) {
     const box = h('section', { class: 'rank-box', 'aria-live': 'polite' }, h('p', { class: 'note center-text' }, '순위를 불러오는 중…'));
+    let offOk = null, started = false;
+    const stopWatch = () => { if (offOk) { offOk(); offOk = null; } };
+    function retry() { stopWatch(); App.clear(box); box.append(h('p', { class: 'note center-text' }, '순위를 불러오는 중…')); load(); }
     function load() {
-      App.fire.results(key).then((rows) => {
+      started = true;
+      serverCall(async () => {
+        let rows = await App.fire.results(key);
+        // 서버가 가득 찼을 때 끝낸 기록은 이 기기에만 있음 → 연결되면 그때 올림
+        const local = o.localKey ? App.store.get(o.localKey, null) : null;
+        if (local && local.r && !rows.some((x) => x.me) && (await App.fire.saveResult(key, myNick(), local.r))) rows = await App.fire.results(key);
+        return rows;
+      }, 15000).then((rows) => {
         App.clear(box);
         const all = rankRows(rows, n);
         const me = all.find((r) => r.me);
@@ -433,9 +453,21 @@
             h('tbody', null, top.map((r) => h('tr', { class: r.me ? 'me' : '' }, h('td', null, r.rank), h('td', null, r.name, r.me ? ' (나)' : ''), h('td', null, r.s.solved + '/' + n), h('td', { class: 'mono' }, App.fmtTime(r.s.total)))))) : null,
           h('div', { class: 'row center' }, h('button', { class: 'btn tiny ghost', onclick: () => { App.clear(box); box.append(h('p', { class: 'note center-text' }, '순위를 불러오는 중…')); load(); } }, '↻ 순위 새로고침')),
           me && o.share ? shareBlock('결과 공유하기', o.share(me, N)) : null);
-      }).catch(() => {
+      }).catch((e) => {
+        if (!box.isConnected && started) return;
         App.clear(box);
-        box.append(h('p', { class: 'note center-text' }, '순위를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'), h('div', { class: 'row center' }, h('button', { class: 'btn tiny', onclick: load }, '다시 시도')));
+        const mine = o.localKey && App.store.get(o.localKey, null);
+        const m = mine && mine.r ? summarize(decodeEntries(mine.r, n) || []) : null;
+        box.append(
+          m ? h('div', { class: 'result-box ok' }, h('p', { class: 'note' }, o.title), h('strong', { class: 'result-big' }, m.solved + ' / ' + n + ' 정답 · ' + fmtLong(m.total))) : null,
+          h('p', { class: 'note warn-note' }, downNote(e)),
+          m ? h('p', { class: 'note center-text' }, '내 기록은 이 기기에 저장해 두었어요. 이 화면을 열어 둔 채 서버에 연결되면 순위에 자동으로 올라가요.') : null,
+          h('div', { class: 'row center' }, h('button', { class: 'btn tiny', onclick: retry }, '다시 시도')));
+        // 서버에 다시 연결되면 저절로 다시 불러오고(이 기기 기록도 올림)
+        if (!offOk) offOk = App.fire.onStatus((st) => {
+          if (!box.isConnected) { stopWatch(); return; }
+          if (st === 'ok') { stopWatch(); retry(); }
+        });
       });
     }
     load();
@@ -460,12 +492,12 @@
         nickField(def.id + '-set-nick'),
         h('div', { class: 'row center wrap' }, h('button', { class: 'btn primary big', onclick: () => { play(false); top(); } }, '시작하기'), leaveBtn));
       if (hasServer()) {
-        App.fire.results(cfg.key).then((rows) => {
+        serverCall(() => App.fire.results(cfg.key)).then((rows) => {
           const all = rankRows(rows, cfg.n);
           if (all.some((r) => r.me)) { App.store.set(cfg.localKey, { at: Date.now() }); if (stats.isConnected) result(); return; }
           const avg = all.length ? all.reduce((a, r) => a + r.s.total, 0) / all.length : 0;
           stats.textContent = all.length ? '지금까지 ' + all.length + '명 참가 · 평균 ' + fmtLong(avg) : '아직 아무도 안 풀었어요. 첫 번째로 풀어 보세요!';
-        }).catch(() => { stats.textContent = ''; });
+        }).catch((e) => { stats.textContent = downNote(e) + ' 문제는 지금 풀 수 있고, 기록은 연결되면 올라가요.'; stats.classList.add('warn-note'); });
       }
     }
     function play(practice) {
@@ -481,7 +513,8 @@
         const r = encodeEntries(results);
         App.store.set(cfg.localKey, { r, at: Date.now() });
         App.clear(box); put(h('p', { class: 'note center-text' }, '기록을 저장하는 중…'));
-        if (hasServer()) await App.fire.saveResult(cfg.key, myNick(), r);
+        if (hasServer()) { try { await serverCall(() => App.fire.saveResult(cfg.key, myNick(), r)); } catch (e) { /* 순위 상자에서 연결되면 다시 올림 */ } }
+        if (!box.isConnected) return;
         result(); top();
       } });
     }
@@ -491,7 +524,7 @@
       const mine = local && local.r ? summarize(decodeEntries(local.r, cfg.n) || []) : null;
       put(
         note ? h('p', { class: 'note strong center-text' }, note) : null,
-        hasServer() ? rankBox(cfg.key, cfg.n, { title: cfg.title, share: cfg.share })
+        hasServer() ? rankBox(cfg.key, cfg.n, { title: cfg.title, share: cfg.share, localKey: cfg.localKey })
           : h('div', { class: 'result-box ok' }, h('p', { class: 'note' }, cfg.title), mine ? h('strong', { class: 'result-big' }, mine.solved + ' / ' + cfg.n + ' 정답 · ' + fmtLong(mine.total)) : null, h('p', { class: 'note' }, '전체 순위는 온라인에 연결된 사이트에서 볼 수 있어요.')),
         h('div', { class: 'row center wrap' }, h('button', { class: 'btn ghost', onclick: () => { play(true); top(); } }, '같은 문제 다시 풀기'), leaveBtn));
     }
@@ -534,7 +567,7 @@
         const box = h('div', { class: 'chal' });
         const opts = Object.assign({}, def.defaultOpts, set.o);
         const when = set.at ? new Date(set.at) : null;
-        setFlow(box, ctx, def, {
+        box._stop = setFlow(box, ctx, def, {
           key: set.key, seeds: seedsFrom(set.seed, set.n), opts, n: set.n, localKey: 'rec.' + set.key,
           head: '📨 방 코드 ' + code + ' 기록 대결', sub: def.name + ' · ' + optLabel(def, opts) + ' · ' + set.n + '문제' + (when ? ' · ' + (when.getMonth() + 1) + '/' + when.getDate() + ' ' + pad2(when.getHours()) + ':' + pad2(when.getMinutes()) + ' 시작' : ''),
           lead: '방장은 이미 나갔지만, 같은 문제를 풀면 이 대결의 순위에 합쳐져요.',
@@ -543,6 +576,15 @@
         });
         return box;
       };
+    }
+
+    // 기록 대결 화면이 만든 문제 묶음·카운트다운·늦게 푸는 화면 정리 (나가기, 다음 판, 화면 닫기)
+    function disposeRec(s) {
+      const L = s.local;
+      if (L.set && L.set.destroy) L.set.destroy();
+      L.set = null;
+      clearInterval(L.cd); L.cd = null;
+      if (L.lateStop) { L.lateStop(); L.lateStop = null; }
     }
 
     function progressPills(W, st, me) {
@@ -558,9 +600,8 @@
       const W = s.W, st = W.s, me = s.mySeat, L = s.local;
       const gk = W.gn + ':rec';
       if (L.key !== gk) {
-        if (L.set && L.set.destroy) L.set.destroy();
-        clearInterval(L.cd);
-        Object.assign(L, { key: gk, set: null, fin: null, cd: null, seeds: seedsFrom(st.seed, st.n), wrap: h('div', { class: 'quick' }), setSaved: false, lateBox: null, allBox: null });
+        disposeRec(s);
+        Object.assign(L, { key: gk, set: null, fin: null, cd: null, seeds: seedsFrom(st.seed, st.n), wrap: h('div', { class: 'quick' }), setSaved: false, lateBox: null, lateStop: null, allBox: null });
       }
       // 방장: 나중에 같은 방 코드로 오는 사람을 위해 문제 묶음을 서버에 남김
       if (s.isHost && st.key && !L.setSaved && hasServer()) { L.setSaved = true; App.fire.putSet((def.id + '-' + s.code).toLowerCase(), st.key, { g: def.id, o: st.o, n: st.n, seed: st.seed }); }
@@ -584,7 +625,7 @@
         if (!L.set) {
           L.set = 'starting';
           setTimeout(() => {
-            if (s.local !== L || L.key !== gk) return;
+            if (s.closed || s._disposed || s.local !== L || L.key !== gk || L.set !== 'starting') return;
             L.set = problemSet(L.wrap, ctx, def, { seeds: L.seeds, opts: st.o, label: '문제', lockMs: RACE_LOCK,
               onProgress: (round, results) => { const ok = results.filter((r) => r.ok).length; setTimeout(() => s.send({ t: 'prog', k: Math.min(round, st.n), s: ok }), 0); },
               onEnd: (results) => {
@@ -627,7 +668,7 @@
       if (me < 0 && st.key && hasServer()) {
         if (!L.lateBox) {
           L.lateBox = h('div', { class: 'chal' });
-          setFlow(L.lateBox, ctx, def, { key: st.key, seeds: L.seeds, opts: st.o, n: st.n, localKey: 'rec.' + st.key,
+          L.lateStop = setFlow(L.lateBox, ctx, def, { key: st.key, seeds: L.seeds, opts: st.o, n: st.n, localKey: 'rec.' + st.key,
             head: '나도 같은 문제 풀기', sub: optLabel(def, st.o) + ' · ' + st.n + '문제', barLabel: '기록 대결 ' + s.code, title: '방 코드 ' + s.code + ' 기록 대결 · ' + def.name });
         }
         g.append(L.lateBox);
@@ -702,6 +743,7 @@
       gameId: def.id,
       engine,
       soloLabel: '컴퓨터와 대결',
+      dispose(s) { disposeRec(s); if (s.local.comp && s.local.comp.destroy) s.local.comp.destroy(); },
       renderOptions(o, s, disabled) {
         const W = s.W, mode = W.o.mode === 'rec' ? 'rec' : 'fast';
         o.append(h('div', { class: 'toolbar' }, segRow('방식', 'mode', [['fast', '⚡ 빨리 맞히기'], ['rec', '⏱ 기록 대결']], W, s, disabled)),

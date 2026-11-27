@@ -152,14 +152,31 @@
         this._changed();
         return;
       }
+      if (Net.kind === 'fire' && App.fire) {
+        // 동시 접속자가 가득 차면 연결이 오류 없이 멈춰 있으므로, 잠깐만 기다리고 안내
+        const ok = await App.fire.ready(10000);
+        if (this.closed) return;
+        if (!ok) {
+          this.status = 'failed'; this.errKind = 'full';
+          this.error = App.fire.problemText();
+          this._changed();
+          return;
+        }
+      }
+      const p = Net.join(roomName(this.gameId, this.code));
       try {
-        this.room = await Net.join(roomName(this.gameId, this.code));
+        this.room = await (Net.kind === 'fire' && App.fire ? App.fire.wait(p, 15000) : p);
       } catch (e) {
+        // 늦게라도 열리면 바로 닫아 유령 참가자·리스너가 남지 않게
+        p.then((r) => { try { r.leave(); } catch (err) { /* 무시 */ } }, () => {});
+        if (this.closed) return;
         this.status = 'failed';
-        this.error = '방에 연결하지 못했어요. (' + (e && (e.code || e.message) || '알 수 없는 오류') + ')';
+        if (e && e.code === 'timeout' && App.fire) { this.errKind = 'full'; this.error = App.fire.problemText(); }
+        else this.error = '방에 연결하지 못했어요. (' + (e && (e.code || e.message) || '알 수 없는 오류') + ')';
         this._changed();
         return;
       }
+      if (this.closed) { try { this.room.leave(); } catch (e) { /* 무시 */ } return; }
       this.unsub = this.room.onPeers((ch) => this._onPeers(ch.peers || this.room.peers()), (err) => {
         this.status = 'failed';
         this.error = '연결이 끊겼어요. (' + err.code + ')';
@@ -532,15 +549,29 @@
       let finishedFor = -1;
       const view = h('div', { class: 'mp' });
       root.append(view);
+      const tune = 'multi:' + cfg.gameId + ':' + Math.random().toString(36).slice(2, 8); // 배경 음악을 붙잡는 이름
+      const music = (play) => { if (App.music) { if (play) App.music.claim(tune); else { App.music.hurry(false); App.music.release(tune); } } };
+      let offSt = null; // 고르기 화면의 연결 상태 구독
+      const unsubStatus = () => { if (offSt) { offSt(); offSt = null; } };
+      // 게임 화면이 따로 만든 것(문제 묶음, 늦게 온 사람 화면 등)을 정리
+      function dispose(s) {
+        if (!s || s._disposed) return;
+        s._disposed = true;
+        if (s._lateStop) { try { s._lateStop(); } catch (e) { console.error(e); } s._lateStop = null; }
+        if (cfg.dispose) { try { cfg.dispose(s); } catch (e) { console.error(e); } }
+      }
 
       function leave() {
+        dispose(session);
         if (session) session.close();
         session = null;
         finishedFor = -1;
+        music(false);
         renderChooser();
       }
 
       function startSession(mode, code) {
+        unsubStatus();
         const nick = App.cleanNick(App.store.get('nick', ''));
         session = new Session({
           gameId: cfg.gameId, engine: cfg.engine, mode, nick, code,
@@ -553,6 +584,7 @@
       }
 
       function renderChooser() {
+        unsubStatus();
         App.clear(view);
         const nickInput = h('input', { id: cfg.gameId + '-nick', class: 'input', maxlength: '12', placeholder: '닉네임', value: App.store.get('nick', '') });
         nickInput.addEventListener('input', () => App.store.set('nick', nickInput.value));
@@ -589,7 +621,15 @@
           ),
         );
         Net.init().then((kind) => {
-          if (kind === 'fire') { btnHost.disabled = false; btnJoin.disabled = false; onlineNote.textContent = '방을 만들고 코드를 알려 주면, 이 페이지를 연 친구가 로그인 없이 들어올 수 있어요.'; }
+          if (kind === 'fire') {
+            btnHost.disabled = false; btnJoin.disabled = false;
+            const paint = (st) => {
+              const bad = st === 'full' || st === 'offline';
+              onlineNote.textContent = bad ? App.fire.problemText(st, { bots: !!cfg.engine.allowBots }) : '방을 만들고 코드를 알려 주면, 이 페이지를 연 친구가 로그인 없이 들어올 수 있어요.';
+              onlineNote.classList.toggle('warn-note', bad);
+            };
+            if (onlineNote.isConnected) { unsubStatus(); offSt = App.fire.onStatus(paint); }
+          }
           else if (kind === 'claude') { btnHost.disabled = false; btnJoin.disabled = false; onlineNote.textContent = '온라인 방에 연결할 수 있어요. 친구는 공유 메뉴에서 이메일로 초대받은 Claude 계정으로 로그인해서 이 페이지를 열어야 같은 방 코드로 들어올 수 있어요.'; }
           else if (kind === 'blocked') { onlineNote.textContent = App.ONLINE_BLOCKED; onlineNote.classList.add('warn-note'); }
           else if (kind === 'local') { btnHost.disabled = false; btnJoin.disabled = false; onlineNote.textContent = '지금은 이 브라우저 안의 다른 탭끼리만 연결돼요. 공유된 페이지에서 열면 친구와 연결됩니다.'; }
@@ -638,13 +678,31 @@
 
       function render(s) {
         if (s !== session) return;
+        music(!!(s.W && s.W.ph === 'play' && s.status !== 'failed' && s.status !== 'hostleft'));
         App.clear(view);
         if (s.status === 'connecting') { view.append(h('div', { class: 'center-msg' }, '방에 연결하는 중…')); return; }
         if (s.status === 'nohost' && cfg.lateJoin) {
           const box = h('div', { class: 'center-msg' }, h('p', null, '방을 찾는 중…'));
           view.append(box);
           if (!s._late) s._late = cfg.lateJoin(s.code);
-          s._late.then((el) => { if (session !== s || !box.isConnected) return; App.clear(box); if (el) box.replaceWith(el(leave)); else box.append(h('p', null, s.error), h('button', { class: 'btn', onclick: leave }, '처음으로')); });
+          s._late.then((el) => {
+            if (session !== s || !box.isConnected) return;
+            App.clear(box);
+            if (el) { const node = el(leave); s._lateStop = node._stop || null; box.replaceWith(node); }
+            else box.append(h('p', null, s.error), h('button', { class: 'btn', onclick: leave }, '처음으로'));
+          });
+          return;
+        }
+        if (s.status === 'failed' || s.status === 'hostleft' || (s.status === 'nohost' && !cfg.lateJoin)) dispose(s);
+        if (s.status === 'failed' && s.errKind === 'full') {
+          const again = () => { const m = s.mode, c = s.mode === 'host' ? newCode() : s.code; leave(); startSession(m, c); };
+          const local = () => { leave(); startSession('local'); };
+          view.append(h('div', { class: 'center-msg full-msg' },
+            h('p', { class: 'note warn-note' }, App.fire ? App.fire.problemText(null, { bots: !!cfg.engine.allowBots }) : s.error),
+            h('div', { class: 'row wrap center' },
+              cfg.engine.allowBots ? h('button', { class: 'btn primary', onclick: local }, cfg.soloLabel || '컴퓨터와 하기') : null,
+              h('button', { class: 'btn', onclick: again }, '다시 시도'),
+              h('button', { class: 'btn ghost', onclick: leave }, '처음으로'))));
           return;
         }
         if (s.status === 'failed' || s.status === 'nohost' || s.status === 'hostleft') {
@@ -719,10 +777,17 @@
           const r = session.remaining(+el.dataset.timerSeat);
           el.textContent = r == null ? '' : App.leftText(r);
         });
+        if (App.music) {
+          // 내 차례 제한 시간(또는 data-hurry 표시가 붙은 단계 시간)이 15초 안쪽이면 빨라지게
+          const me = session.mySeat;
+          let left = me >= 0 ? session.remaining(me) : null;
+          view.querySelectorAll('[data-hurry][data-until]').forEach((el) => { const r = +el.dataset.until - Date.now(); if (left == null || r < left) left = r; });
+          App.music.hurry(left != null && left > 0 && left < 15000);
+        }
       }, 300);
 
       renderChooser();
-      return () => { clearInterval(clock); if (session) session.close(); };
+      return () => { clearInterval(clock); unsubStatus(); music(false); dispose(session); if (session) session.close(); };
     },
   };
 })();

@@ -1,6 +1,6 @@
 const fs = require('fs'), path = require('path');
 const src = (p) => fs.readFileSync(path.join(__dirname, 'src', p), 'utf8');
-const order = ['core.js','eq.js','fire.js','multi.js','quick.js','games/signal.js','games/jang.js','games/link.js','games/magic.js','games/tower-core.js','games/tower.js','games/nemo.js','games/cubes.js','games/sym.js','games/heavy.js','games/wall.js','demos.js','demos-rules.js','app.js'];
+const order = ['core.js','eq.js','fire.js','music.js','multi.js','quick.js','games/signal.js','games/jang.js','games/link.js','games/magic.js','games/tower-core.js','games/tower.js','games/nemo.js','games/cubes.js','games/sym.js','games/heavy.js','games/wall.js','demos.js','demos-rules.js','app.js'];
 let js = order.map(f => `/* ---- ${f} ---- */\n` + src(f)).join('\n');
 if (/<\/script/i.test(js)) throw new Error('</script in JS');
 const fontB64 = (f) => fs.readFileSync(path.join(__dirname, 'assets', 'fonts', f)).toString('base64');

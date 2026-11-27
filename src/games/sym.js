@@ -166,7 +166,8 @@
     let press = null, drag = null, boardEl = null;
     let canHover = false;
     try { canHover = matchMedia('(hover: hover) and (pointer: fine)').matches; } catch (e) { /* 무시 */ }
-    const LONG_MS = 350;
+    const LONG_MS = 150; // 가만히 누르고 있으면 이만큼 뒤 끌기 시작 (누른 채 움직이면 바로 시작)
+    const DRAG_PX = 10; // 손가락이 이만큼 넘게 움직이면 끌기 (흔들림은 탭)
     const el = h('div', { class: 'sym' });
 
     function occupancy(skip) {
@@ -196,7 +197,7 @@
       const owner = occupancy(-1).get(key(x, y));
       if (owner != null) {
         sel = sel === owner ? null : owner;
-        msg = sel != null ? '판 위 조각을 골랐어요. ↻ 돌리기로 회전하거나, 빈칸을 눌러 옮기거나, 꾹 눌러 끌어서 옮길 수 있어요.' : '';
+        msg = sel != null ? '판 위 조각을 골랐어요. ↻ 돌리기로 회전하거나, 빈칸을 눌러 옮기거나, 누른 채 끌어서 옮길 수 있어요.' : '';
         draw();
         return;
       }
@@ -239,34 +240,45 @@
     }
     function onDown(e) {
       if (solved || e.button > 0) return;
+      if (press || drag || e.isPrimary === false) return; // 두 번째 손가락은 무시
       const c = cellFromEvent(e);
       if (!c) return;
       const owner = occupancy(-1).get(key(c[0], c[1]));
-      press = { c, owner, sx: e.clientX, sy: e.clientY, moved: false, timer: null };
+      const pr = { c, owner, sx: e.clientX, sy: e.clientY, moved: false, timer: null, id: e.pointerId };
+      press = pr;
       try { boardEl.setPointerCapture(e.pointerId); } catch (err) { /* 무시 */ }
-      if (owner != null) {
-        press.timer = setTimeout(() => {
-          if (!press || press.moved) return;
-          const p = P[owner];
-          drag = { i: owner, off: [press.c[0] - p.pos[0], press.c[1] - p.pos[1]], target: p.pos.slice() };
-          sel = owner;
-          press = null;
-          msg = '끌어서 옮길 곳에 놓으세요.';
-          paint();
-          const st = el.querySelector('.status'); if (st) st.textContent = msg;
-          if (navigator.vibrate) { try { navigator.vibrate(12); } catch (err) { /* 무시 */ } }
-        }, LONG_MS);
-      }
+      if (owner != null) pr.timer = setTimeout(() => { if (press === pr && !pr.moved) startDrag(); }, LONG_MS);
+    }
+    // 판 위 조각 끌기 시작 (조금만 눌러 있거나, 누른 채 움직이면 바로)
+    function startDrag(e) {
+      const pr = press;
+      if (!pr || pr.owner == null) return;
+      press = null;
+      clearTimeout(pr.timer);
+      const p = P[pr.owner];
+      drag = { i: pr.owner, off: [pr.c[0] - p.pos[0], pr.c[1] - p.pos[1]], target: p.pos.slice(), from: p.pos.slice(), c: pr.c, prevSel: sel, id: pr.id };
+      sel = pr.owner;
+      if (e) { const c = cellFromEvent(e); if (c) drag.target = [c[0] - drag.off[0], c[1] - drag.off[1]]; }
+      msg = '끌어서 옮길 곳에 놓으세요.';
+      paint();
+      const st = el.querySelector('.status'); if (st) st.textContent = msg;
+      if (navigator.vibrate) { try { navigator.vibrate(10); } catch (err) { /* 무시 */ } }
     }
     function onMove(e) {
       if (drag) {
+        if (e.pointerId !== drag.id) return;
         const c = cellFromEvent(e);
         if (c) { drag.target = [c[0] - drag.off[0], c[1] - drag.off[1]]; paint(); }
         e.preventDefault();
         return;
       }
       if (press) {
-        if (Math.hypot(e.clientX - press.sx, e.clientY - press.sy) > 10) { press.moved = true; clearTimeout(press.timer); }
+        if (e.pointerId !== press.id) return;
+        if (Math.hypot(e.clientX - press.sx, e.clientY - press.sy) <= DRAG_PX) return;
+        if (press.owner != null) { startDrag(e); e.preventDefault(); return; }
+        // 빈칸을 누른 경우: 손가락이 다른 칸으로 넘어갔을 때만 누르기를 취소 (살짝 흔들린 건 그대로 탭)
+        const c = cellFromEvent(e);
+        if (!c || c[0] !== press.c[0] || c[1] !== press.c[1]) { press.moved = true; clearTimeout(press.timer); }
         return;
       }
       if (canHover && sel != null) {
@@ -274,10 +286,13 @@
         if (!c || !hover || c[0] !== hover[0] || c[1] !== hover[1]) { hover = c; paint(); }
       }
     }
-    function onUp() {
+    function onUp(e) {
       if (drag) {
+        if (e && e.pointerId !== drag.id) return;
         const d = drag;
         drag = null;
+        // 다른 칸으로 옮기지 않았으면 그냥 누른 것(탭): 선택하거나 선택 풀기
+        if (d.target[0] === d.from[0] && d.target[1] === d.from[1]) { sel = d.prevSel; msg = ''; tap(d.c[0], d.c[1]); return; }
         const p = P[d.i];
         if (fitsAt(d.i, p.cells, d.target[0], d.target[1])) { p.pos = d.target; msg = ''; check(); }
         else msg = '그 자리에는 옮길 수 없어요. 다른 조각과 겹치거나 판 밖으로 나가요.';
@@ -285,13 +300,17 @@
         return;
       }
       if (press) {
+        if (e && e.pointerId !== press.id) return;
         clearTimeout(press.timer);
         const pr = press;
         press = null;
         if (!pr.moved) tap(pr.c[0], pr.c[1]);
       }
     }
-    function onCancel() { if (press) clearTimeout(press.timer); press = null; if (drag) { drag = null; draw(); } }
+    function onCancel(e) {
+      if (press && (!e || e.pointerId === press.id)) { clearTimeout(press.timer); press = null; }
+      if (drag && (!e || e.pointerId === drag.id)) { drag = null; draw(); }
+    }
 
     function draw() {
       App.clear(el);
@@ -324,8 +343,8 @@
         pz.flip ? h('button', { class: 'btn', disabled: sel == null || solved, onclick: () => turn(flip) }, '⇋ 뒤집기') : null,
         h('button', { class: 'btn ghost', disabled: !selPlaced || solved, onclick: () => { P[sel].pos = null; msg = ''; draw(); } }, '판에서 빼기'),
         h('button', { class: 'btn ghost', disabled: solved || P.every((p) => !p.pos), onclick: () => { P.forEach((p) => { p.pos = null; }); sel = null; msg = ''; draw(); } }, '모두 내리기'));
-      const hint = sel == null ? '아래 조각을 고르거나, 판 위 조각을 눌러 선택하세요. 판 위 조각을 꾹 누르면 끌어서 옮길 수 있어요.'
-        : selPlaced ? '선택한 조각: ↻ 돌리기로 회전, 빈칸을 누르면 그 자리로 이동, 꾹 눌러 끌어서 옮기기도 돼요.'
+      const hint = sel == null ? '아래 조각을 고르거나, 판 위 조각을 눌러 선택하세요. 판 위 조각은 누른 채 끌어서 옮길 수도 있어요.'
+        : selPlaced ? '선택한 조각: ↻ 돌리기로 회전, 빈칸을 누르면 그 자리로 이동, 누른 채 끌어서 옮기기도 돼요.'
           : '판의 빈칸을 누르면 조각의 맨 위 왼쪽 칸이 그 자리에 놓여요.';
       el.append(...[
         h('p', { class: 'hint' }, hint),
@@ -401,7 +420,7 @@
 <li>조각은 돌릴 수 있습니다. 기본 규칙에서는 <b>뒤집을 수 없습니다</b>. “뒤집기 허용” 변형에서만 뒤집을 수 있어요.</li>
 <li>조각끼리 겹칠 수 없고, 모든 조각이 변으로 이어져 한 덩어리가 되어야 합니다.</li>
 <li>대칭축은 세로, 가로, 대각선 어느 방향이어도 됩니다. 안쪽에 구멍이 생겨도 대칭이면 괜찮습니다.</li>
-<li>조각을 고른 뒤 판의 칸을 누르면 놓입니다. 판 위 조각을 누르면 선택되어 「↻ 돌리기」로 돌리거나 빈 칸을 눌러 옮길 수 있고, 꾹 누른 채 끌어서 옮길 수도 있어요. 「판에서 빼기」로 다시 내려놓을 수 있습니다.</li>
+<li>조각을 고른 뒤 판의 칸을 누르면 놓입니다. 판 위 조각을 누르면 선택되어 「↻ 돌리기」로 돌리거나 빈 칸을 눌러 옮길 수 있고, 누른 채 끌어서 옮길 수도 있어요. 「판에서 빼기」로 다시 내려놓을 수 있습니다.</li>
 </ul>
 <h4>혼자 연습</h4>
 <p>5문제의 시간을 잽니다.</p>

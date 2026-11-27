@@ -81,14 +81,28 @@
     // 동시 접속자 (Firebase 판에서만): 무료 요금제는 동시에 100명까지 연결돼요
     const onlineEl = h('p', { class: 'online-count', hidden: true, 'aria-live': 'polite' });
     if (App.fire && App.fire.enabled()) {
-      main._cleanup = App.fire.onCount((n) => {
-        if (n == null) { onlineEl.hidden = true; return; }
+      let lastN = null;
+      const paintOnline = () => {
+        const st = App.fire.status();
+        onlineEl.textContent = '';
+        onlineEl.classList.remove('full', 'down');
+        if (st === 'full' || st === 'offline') {
+          // 서버에 못 들어가도 혼자 연습과 컴퓨터와 대결은 된다는 것을 알려 줌
+          onlineEl.hidden = false;
+          onlineEl.classList.add('down');
+          onlineEl.append(h('span', { class: 'dot', 'aria-hidden': 'true' }), App.fire.problemText(st), ' ',
+            h('button', { class: 'btn tiny ghost', type: 'button', onclick: () => location.reload() }, '다시 연결'));
+          return;
+        }
+        if (st !== 'ok' || lastN == null) { onlineEl.hidden = true; return; }
         const lim = App.fire.limit;
         onlineEl.hidden = false;
-        onlineEl.classList.toggle('full', n >= lim * 0.9);
-        onlineEl.textContent = '';
-        onlineEl.append(h('span', { class: 'dot', 'aria-hidden': 'true' }), '동시 접속자 ', h('b', null, String(n)), ' / ' + lim, n >= lim * 0.9 ? ' · 곧 가득 차요' : '');
-      });
+        onlineEl.classList.toggle('full', lastN >= lim * 0.9);
+        onlineEl.append(h('span', { class: 'dot', 'aria-hidden': 'true' }), '동시 접속자 ', h('b', null, String(lastN)), ' / ' + lim, lastN >= lim * 0.9 ? ' · 곧 가득 차요' : '');
+      };
+      const offCount = App.fire.onCount((n) => { lastN = n; paintOnline(); });
+      const offStatus = App.fire.onStatus(() => paintOnline());
+      main._cleanup = () => { offCount(); offStatus(); };
     }
     const hero = h('section', { class: 'hero' },
       h('h1', { class: 'title sr-only' }, '두뇌 서바이벌에 내가 참가한다면?'),
@@ -169,7 +183,7 @@
     }
     main.append(
       h('div', { class: 'ghead' },
-        h('a', { class: 'back', href: '#' }, '← 게임 목록'),
+        h('div', { class: 'ghead-row' }, h('a', { class: 'back', href: '#' }, '← 게임 목록'), App.music ? App.music.button() : null),
         h('div', { class: 'gtitle' }, h('span', { class: 'kicker' }, g.kicker + ' · ' + g.players), h('h1', null, g.name))),
       tablist, panels.play, panels.rules, panels.guide);
     const ctx = {

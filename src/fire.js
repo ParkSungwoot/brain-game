@@ -22,7 +22,39 @@
   let live = 0, offTimer = null;
   let offset = 0;
 
+  // ----- 연결 상태: 'idle' 시작 전 | 'connecting' | 'ok' | 'full' 접속자 가득(로그인은 됐는데 DB 연결이 안 됨) | 'offline' -----
+  // 무료 요금제는 동시 연결 100개까지라, 넘으면 새 연결이 거절돼요. 거절은 오류 없이 재시도만 반복되므로 시간으로 판단
+  const CONNECT_WAIT = 9000;
+  let status = 'idle', stTimer = null, paused = false, autoTimer = null, K0 = null;
+  let connected = false; // .info/connected 의 실제 값 (멈춰 둔 동안에도 갱신)
+  const statusSubs = new Set();
+  function setStatus(s) {
+    if (s === status) return;
+    status = s;
+    clearInterval(autoTimer); autoTimer = null;
+    // 가득 찬 동안에는 30초마다 다시 붙어 봄 (재시도 간격이 몇 분까지 늘어나는 것을 막음)
+    if ((s === 'full' || s === 'offline') && K0) autoTimer = setInterval(() => { if (!document.hidden && !paused) softRetry(); }, 30000);
+    for (const fn of statusSubs) { try { fn(s); } catch (e) { /* 무시 */ } }
+  }
+  function armWait() {
+    clearTimeout(stTimer);
+    stTimer = setTimeout(() => {
+      if (!paused && !connected) setStatus(navigator.onLine === false ? 'offline' : 'full');
+    }, CONNECT_WAIT);
+  }
+  function resumeFromPause(K) {
+    paused = false;
+    try { K.F.goOnline(K.db); } catch (e) { /* 무시 */ }
+    if (!connected) { if (status === 'ok') setStatus('connecting'); armWait(); }
+  }
+  function softRetry() {
+    if (!K0) return;
+    try { K0.F.goOffline(K0.db); K0.F.goOnline(K0.db); } catch (e) { /* 무시 */ }
+    armWait();
+  }
+
   async function boot() {
+    if (status === 'idle' || status === 'offline') setStatus('connecting');
     if (!globalThis.FB) await loadScript(App.FB_SRC || 'fb.js');
     const F = globalThis.FB;
     const app = F.initializeApp(App.FIREBASE);
@@ -46,9 +78,18 @@
   const countSubs = new Set();
   function startOnline(K) {
     const F = K.F;
+    K0 = K;
     const me = F.ref(K.db, 'online/' + rid());
     F.onValue(K.connRef, (s) => {
-      if (s.val() !== true) return;
+      connected = s.val() === true;
+      if (!connected) {
+        if (paused) return;
+        if (status !== 'full' && status !== 'offline') setStatus('connecting');
+        armWait();
+        return;
+      }
+      clearTimeout(stTimer);
+      setStatus('ok');
       F.set(me, { u: K.uid, t: F.serverTimestamp() }).then(() => F.onDisconnect(me).remove()).catch(() => {});
     });
     F.onValue(F.ref(K.db, 'online'), (snap) => {
@@ -59,15 +100,19 @@
     let hideT = null;
     document.addEventListener('visibilitychange', () => {
       clearTimeout(hideT);
-      if (document.hidden) hideT = setTimeout(() => { if (live === 0) { try { F.goOffline(K.db); } catch (e) { /* 무시 */ } } }, 60000);
-      else { try { F.goOnline(K.db); } catch (e) { /* 무시 */ } }
+      if (document.hidden) hideT = setTimeout(() => { if (live === 0) { paused = true; clearTimeout(stTimer); try { F.goOffline(K.db); } catch (e) { /* 무시 */ } } }, 60000);
+      else if (paused) { resumeFromPause(K); }
     });
   }
   function kit() {
-    if (!kitP) { kitP = boot(); kitP.catch(() => { kitP = null; }); }
+    if (!kitP) { kitP = boot(); kitP.catch(() => { kitP = null; setStatus('offline'); }); }
     return kitP;
   }
-  function online(K) { live++; clearTimeout(offTimer); try { K.F.goOnline(K.db); } catch (e) { /* 무시 */ } }
+  function online(K) {
+    live++; clearTimeout(offTimer);
+    if (paused) resumeFromPause(K);
+    else { try { K.F.goOnline(K.db); } catch (e) { /* 무시 */ } }
+  }
   function offline() { live = Math.max(0, live - 1); }
 
   class FireRoom {
@@ -154,6 +199,41 @@
       return () => countSubs.delete(fn);
     },
     limit: 100,
+    // 연결 상태 ('connecting' | 'ok' | 'full' | 'offline')와 안내 글
+    status: () => status,
+    onStatus(fn) {
+      statusSubs.add(fn);
+      try { fn(status); } catch (e) { /* 무시 */ }
+      kit().catch(() => {});
+      return () => statusSubs.delete(fn);
+    },
+    // o.bots === false: 컴퓨터 상대가 없는 게임(수식 신호등 1:1 등)이라 혼자 연습만 안내
+    problemText(s, o) {
+      s = s || status;
+      const alt = o && o.bots === false ? '혼자 연습(혼자 풀기)은 그대로 할 수 있어요.' : '혼자 연습과 컴퓨터와 대결은 그대로 할 수 있어요.';
+      if (s === 'offline') return '인터넷 연결이 불안정해서 온라인 서버에 연결되지 않아요. ' + alt;
+      return '지금 동시 접속자가 가득 차서(최대 100명) 온라인 서버에 들어갈 수 없어요. ' + alt;
+    },
+    // ms 안에 서버에 연결되면 true, 아니면 false (가득 찼거나 끊긴 상태면 한 번 다시 붙어 봄)
+    async ready(ms) {
+      try { await kit(); } catch (e) { return false; }
+      if (connected) return true;
+      // 이미 가득 찬 것으로 안 뒤라면 한 번 다시 붙어 보고 짧게만 기다림
+      const known = status === 'full' || status === 'offline';
+      if (known) softRetry();
+      if (paused && K0) resumeFromPause(K0);
+      return new Promise((resolve) => {
+        const fn = (st) => { if (st === 'ok') { clearTimeout(t); statusSubs.delete(fn); resolve(true); } };
+        const t = setTimeout(() => { statusSubs.delete(fn); resolve(connected); }, known ? Math.min(ms || 4000, 4000) : (ms || CONNECT_WAIT + 1000));
+        statusSubs.add(fn);
+      });
+    },
+    retry: () => softRetry(),
+    // 서버 응답을 ms 까지만 기다림 (가득 찬 동안은 응답이 오지 않고 멈춰 있기 때문)
+    wait(p, ms) {
+      let t;
+      return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej({ code: 'timeout', message: '서버 응답이 없어요' }), ms || 8000); })]).finally(() => clearTimeout(t));
+    },
     uid: async () => (await kit()).uid,
     // 기록 저장: results/{묶음}/{내 uid} = { n: 이름, r: 문제별 기록, at } (처음 한 번만 쓸 수 있음)
     async saveResult(key, name, r) {

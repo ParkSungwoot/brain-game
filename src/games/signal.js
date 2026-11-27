@@ -225,6 +225,7 @@
         App.store.set('signal.len', len); App.store.set('signal.pow', pow);
         ans = genEquation(len, pow);
         guesses = []; fbs = []; cur = ''; done = false; msg = ''; shake = false;
+        if (App.music) App.music.claim('signal-solo'); // 푸는 동안 배경 음악
         draw();
       }
       function onKey(k) {
@@ -238,6 +239,7 @@
           guesses.push(cur); fbs.push(f); cur = ''; msg = '';
           if (f === 'g'.repeat(len)) { done = true; msg = guesses.length + '번 만에 맞혔어요!'; ctx.finished({}); }
           else if (guesses.length >= triesFor(len)) { done = true; msg = '아쉬워요. 정답은 ' + E.show(ans) + ' 였어요.'; ctx.finished({}); }
+          if (done && App.music) App.music.release('signal-solo');
         } else if (k === '^' && !pow) return;
         else if (cur.length < len) cur += k;
         draw();
@@ -264,7 +266,7 @@
           done ? h('div', { class: 'row center' }, h('button', { class: 'btn primary', onclick: () => fresh() }, '다음 문제'), h('button', { class: 'btn', onclick: () => fresh(true) }, '랜덤 변형으로')) : keyboardEl(pow, keyStates(guesses, fbs), onKey));
       }
       fresh();
-      return () => { keyHandler = null; };
+      return () => { keyHandler = null; if (App.music) App.music.release('signal-solo'); };
     }
 
     // ----- 1:1 온라인 -----

@@ -318,6 +318,9 @@
   };
 
   App.demos = {
+    // 다른 파일(규칙 설명 그림)에서 같은 재생기를 쓰도록
+    player, cell, grid, reduced,
+    add(name, fn) { D[name] = fn; },
     mountAll(el) {
       el.querySelectorAll('.demo[data-demo]').forEach((box) => {
         const fn = D[box.dataset.demo];

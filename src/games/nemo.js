@@ -119,6 +119,7 @@
     botTime: (pz) => 18 + pz.hits.length * 3 + pz.rows * pz.cols * 0.6,
     rules: `
 <p>숫자판 위에서 <b>안에 있는 수를 모두 더하면 목표 값이 되는 직사각형</b>이 몇 개인지 맞히는 게임입니다.</p>
+<div class="demo" data-demo="rules-nemo"></div>
 <ul>
 <li>네모는 칸으로 이루어진 직사각형입니다. 정사각형과 1칸짜리도 네모입니다.</li>
 <li>숫자가 없는 칸은 0으로 셉니다.</li>

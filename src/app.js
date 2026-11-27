@@ -182,6 +182,7 @@
       },
     };
     const cleanup = g.mount(panels.play, ctx);
+    if (App.demos) App.demos.mountAll(panels.rules); // 규칙 설명의 움직이는 그림
     select('play');
     return { el: main, cleanup };
   }

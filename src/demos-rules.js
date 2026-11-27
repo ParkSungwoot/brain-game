@@ -157,13 +157,13 @@
   // ---------- 수식 신호등 ----------
   add('rules-signal', (root) => {
     const ans = '12+5=17';
-    const G = ['15+2=17', '3460899', '12+5=17'];
+    const G = ['15+2=17', '1111111', '12+5=17'];
     const F = G.map((g) => App.signal.grade(g, ans));
     const steps = [
       { rows: 0, hide: true, cap: '숨은 등식 하나를 정해진 횟수 안에 맞혀요. 한 칸에 숫자 하나나 기호(+ − × ÷ ^ =) 하나가 들어가요.', ms: 3600 },
       { rows: 1, color: 0, cap: '한 줄을 내면…' },
       { rows: 1, color: 1, cap: '초록 = 그 자리에 정확히 있음 · 노랑 = 다른 자리에 있음 · 빨강 = 정답에 없는 문자', ms: 3800 },
-      { rows: 2, color: 2, cap: '내는 줄은 등식이 아니어도 돼요. 숫자만 모아서 어떤 숫자가 쓰이는지 확인할 수도 있어요.', ms: 3800 },
+      { rows: 2, color: 2, cap: '내는 줄은 등식이 아니어도 돼요. 1을 일곱 번 내 보면 정답의 1 두 개 자리만 초록, 정답보다 많이 낸 나머지는 모두 빨강!', ms: 4200 },
       { rows: 3, color: 3, cap: '모든 칸이 초록이면 성공! 7칸은 6번, 8칸은 7번, 9~10칸은 8번 안에 맞혀야 해요.', ms: 3600 },
     ];
     player(root, '신호 색 규칙', steps, (stage, s) => {
@@ -335,30 +335,35 @@
 
   // ---------- 컬러 링크 ----------
   add('rules-link', (root) => {
-    const N = 5, A = '#e6194b', Bc = '#4363d8';
+    const N = 5, CL = { A: '#e6194b', B: '#4363d8', C: '#3cb44b', D: '#ffe119', X: '#161616' };
+    const INK = { A: '#fff', B: '#fff', C: '#fff', D: '#141a2e', X: '#fff' };
+    const p1 = { 0: 'A' }, p2 = Object.assign({}, p1, { 4: 'B', 24: 'A' }), p3 = Object.assign({}, p2, { 12: 'C', 7: 'D' }), p4 = Object.assign({}, p3, { 20: 'B', 2: 'C' });
     const steps = [
-      { pcs: {}, cap: '두 사람이 번갈아 남은 말 중 아무 색이나 하나를 골라 빈 칸에 놓아요. (실제 판은 7×7, 14색 × 2개)', ms: 3600 },
-      { pcs: { 0: 'A' }, who: '나', cap: '나: A를 놓고…' },
-      { pcs: { 0: 'A', 4: 'B' }, who: '상대', cap: '상대: B를 놓고…' },
-      { pcs: { 0: 'A', 4: 'B', 24: 'A' }, who: '나', paths: [['A', [0, 5, 10, 15, 20, 21, 22, 23, 24]]], cap: '같은 색끼리는 언제나 다른 길과 겹치지 않는 길로 이어질 수 있어야 해요. 길은 양 끝 포함 6칸 이상!', ms: 4000 },
-      { pcs: { 0: 'A', 4: 'B', 24: 'A', 20: 'B' }, who: '상대', cap: '상대가 B를 20에 놓았어요. 그런데 A와 B가 엇갈려서 둘 다 이을 수 없어 보여요…', ms: 3400 },
-      { pcs: { 0: 'A', 4: 'B', 24: 'A', 20: 'B' }, paths: [['A', [0, 5, 10, 15, 16, 21, 22, 23, 24]], ['B', [4, 9, 14, 19]]], x: 19, declare: true, cap: '내 차례에 「불가능 선언!」 → 방금 놓은 상대가 5분 안에 모든 색을 실제로 이어 보여야 해요.', ms: 4200 },
-      { pcs: { 0: 'A', 4: 'B', 24: 'A', 20: 'B' }, declare: true, cap: '증명에 실패하면 놓은 사람이 지고, 성공하면 선언한 사람이 져요. 섣불리 선언하면 안 돼요!', ms: 3800 },
+      { pcs: {}, cap: '라운드 첫 차례에는 선 플레이어가 말 1개만 놓아요. (실제 판은 7×7, A~N 14색 × 2개)', ms: 3400 },
+      { pcs: p1, nw: [0], who: '나(선)', cap: '나: A를 하나 놓고…' },
+      { pcs: p2, nw: [4, 24], who: '상대', cap: '그다음부터는 차례마다 서로 다른 색 말 2개! 상대: B와 A.', ms: 3200 },
+      { pcs: p2, paths: [['A', [0, 5, 10, 15, 20, 21, 22, 23, 24]]], cap: '같은 색끼리는 겹치지 않는 길로 이어질 수 있어야 해요. 길은 말 칸을 포함해 6칸 이상!', ms: 3800 },
+      { pcs: p3, nw: [12, 7], who: '나', cap: '나: C와 D. 아직 모두 이어질 수 있어요.' },
+      { pcs: p4, nw: [20, 2], who: '상대', cap: '상대: B와 C. 그런데 A와 B가 엇갈려서 둘 다 이을 수 없어 보여요…', ms: 3600 },
+      { pcs: p4, paths: [['A', [0, 5, 10, 15, 16, 21, 22, 23, 24]], ['B', [4, 9, 14, 19]]], x: 19, declare: true, cap: '내 차례 시작에 「불가능 선언!」 → 방금 놓은 상대가 5분 안에 모든 색을 이어 보여야 해요.', ms: 4200 },
+      { pcs: p4, score: true, cap: '증명 실패 → 선언한 내가 승점 +1 (증명했다면 상대가 +1). 5라운드 중 먼저 3점이면 승리! 검은 X·흰 Y 말이 미리 놓인 판도 있어요.', ms: 4400 },
     ];
     player(root, '컬러 링크 규칙', steps, (stage, s) => {
       const wrap = h('div', { class: 'lk-board demo-lk', style: { '--n': N } });
       for (let i = 0; i < N * N; i++) {
         const p = s.pcs[i];
-        wrap.append(h('div', { class: 'lk-cell' }, p ? h('span', { class: 'lk-piece', style: { background: p === 'A' ? A : Bc, color: '#fff' } }, p) : null));
+        wrap.append(h('div', { class: 'lk-cell' + (s.nw && s.nw.includes(i) ? ' last' : '') }, p ? h('span', { class: 'lk-piece', style: { background: CL[p], color: INK[p] } }, p) : null));
       }
       const svg = svgEl('svg', { viewBox: '0 0 ' + N + ' ' + N, class: 'lk-paths' });
-      for (const [c, P] of s.paths || []) svg.append(svgEl('polyline', { points: P.map((x) => (x % N + 0.5) + ',' + (Math.floor(x / N) + 0.5)).join(' '), stroke: c === 'A' ? A : Bc, class: 'lk-line' }));
+      for (const [c, P] of s.paths || []) svg.append(svgEl('polyline', { points: P.map((x) => (x % N + 0.5) + ',' + (Math.floor(x / N) + 0.5)).join(' '), stroke: CL[c], class: 'lk-line' }));
       if (s.x != null) {
         const x = s.x % N + 0.5, y = Math.floor(s.x / N) + 0.5;
         svg.append(svgEl('path', { d: `M${x - 0.25},${y + 0.25} l0.5,0.5 M${x + 0.25},${y + 0.25} l-0.5,0.5`, stroke: '#ef5350', 'stroke-width': '0.12', 'stroke-linecap': 'round' }));
       }
       wrap.append(svg);
-      stage.append(h('div', { class: 'demo-col' }, wrap, s.declare ? h('div', { class: 'demo-big over' }, '불가능 선언! ⏱ 5:00') : s.who ? h('div', { class: 'note' }, s.who + ' 차례') : null));
+      stage.append(h('div', { class: 'demo-col' }, wrap,
+        s.declare ? h('div', { class: 'demo-big over' }, '불가능 선언! ⏱ 5:00') : s.score ? h('div', { class: 'demo-big ok' }, '승점 나 1 : 0 상대') : s.who ? h('div', { class: 'note' }, s.who + ' 차례') : null));
     });
   });
+
 })();

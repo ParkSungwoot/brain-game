@@ -88,15 +88,14 @@
 
   function evalExpr(s) { return evalTokens(tokenize(s)); }
 
-  // 등식 검사: {ok, msg}
+  // 등식 검사: {ok, msg}. 등호는 1개 이상, 등호로 나뉜 모든 식의 값이 같아야 함 (예: 2+2=4=1+3)
   function checkEquation(s) {
     const parts = s.split('=');
-    if (parts.length !== 2) return { ok: false, msg: '= 는 정확히 한 개 있어야 해요' };
-    if (!parts[0] || !parts[1]) return { ok: false, msg: '= 양쪽에 식이 있어야 해요' };
+    if (parts.length < 2) return { ok: false, msg: '등호(=)가 1개 이상 있어야 해요' };
+    if (parts.some((x) => !x)) return { ok: false, msg: '등호 양쪽에 모두 식이 있어야 해요' };
     try {
-      const a = evalExpr(parts[0]);
-      const b = evalExpr(parts[1]);
-      if (a[0] !== b[0] || a[1] !== b[1]) return { ok: false, msg: '양쪽 값이 같지 않아요' };
+      const vals = parts.map((x) => evalExpr(x));
+      if (vals.some((v) => v[0] !== vals[0][0] || v[1] !== vals[0][1])) return { ok: false, msg: '등호로 나뉜 값이 모두 같아야 해요' };
       return { ok: true };
     } catch (e) { return { ok: false, msg: e.message }; }
   }

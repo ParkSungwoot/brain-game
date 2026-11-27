@@ -56,8 +56,17 @@
     return len === 7 ? '12+5=17' : len === 8 ? '6*7-2=40' : len === 10 ? '8*9-15=57'.padEnd(10, '') : '7*8-29=27';
   }
 
+  // 방송 규칙: 초록 먼저, 남은 개수만큼 앞에서부터 노랑, 정답보다 많이 쓴 뒤쪽은 빨강
   function grade(guess, ans) {
-    return guess.split('').map((c, i) => (c === ans[i] ? 'g' : ans.includes(c) ? 'y' : 'r')).join('');
+    const out = Array(guess.length).fill('r');
+    const left = {};
+    for (let i = 0; i < ans.length; i++) { if (guess[i] === ans[i]) out[i] = 'g'; else left[ans[i]] = (left[ans[i]] || 0) + 1; }
+    for (let i = 0; i < guess.length; i++) {
+      if (out[i] === 'g') continue;
+      const c = guess[i];
+      if (left[c] > 0) { out[i] = 'y'; left[c]--; }
+    }
+    return out.join('');
   }
 
   function validateGuess(s, len, pow) {
@@ -124,7 +133,7 @@
     minPlayers: 2, maxPlayers: 2, allowBots: false,
     defaultOpts: { len: 9, pow: 1 },
     start(players, o) {
-      return { len: o.len || 9, pow: o.pow ? 1 : 0, ph: 'set', sec: [null, null], gs: [[], []], fb: [[], []], sub: [null, null], turn: 1, maxT: 10, win: null, why: '' };
+      return { len: o.len || 9, pow: o.pow ? 1 : 0, ph: 'set', sec: [null, null], gs: [[], []], fb: [[], []], sub: [null, null], turn: 1, win: null, why: '', rematch: 0 };
     },
     act(G, seat, a) {
       if (!a || seat < 0 || seat > 1) throw new Error('잘못된 행동');
@@ -137,28 +146,30 @@
         return;
       }
       if (a.t === 'g') {
-        if (G.ph !== 'guess' || G.sub[seat]) throw new Error('지금은 낼 수 없어요');
-        const err = validateProbe(String(a.eq || ''), G.len, G.pow);
-        if (err) throw new Error(err);
-        G.sub[seat] = String(a.eq);
-        if (G.sub[0] && G.sub[1]) {
+        if (G.ph !== 'guess' || G.sub[seat] != null) throw new Error('지금은 낼 수 없어요');
+        if (a.skip) G.sub[seat] = ''; // 시간 안에 못 내면 이번 턴 색 공개 없음
+        else {
+          const err = validateProbe(String(a.eq || ''), G.len, G.pow);
+          if (err) throw new Error(err);
+          G.sub[seat] = String(a.eq);
+        }
+        if (G.sub[0] != null && G.sub[1] != null) {
           const solved = [false, false];
           for (let s = 0; s < 2; s++) {
-            const f = grade(G.sub[s], G.sec[1 - s]);
+            const f = G.sub[s] ? grade(G.sub[s], G.sec[1 - s]) : '';
             G.gs[s].push(G.sub[s]);
             G.fb[s].push(f);
             solved[s] = f === 'g'.repeat(G.len);
           }
           G.sub = [null, null];
-          if (solved[0] || solved[1]) {
+          if (solved[0] && solved[1]) {
+            // 둘 다 같은 턴에 맞히면 한쪽만 이길 때까지 재경기 (비밀 수식부터 다시)
+            G.rematch++;
+            Object.assign(G, { ph: 'set', sec: [null, null], gs: [[], []], fb: [[], []], turn: 1, why: '같은 턴에 둘 다 맞혀서 재경기!' });
+          } else if (solved[0] || solved[1]) {
             G.ph = 'end';
-            G.win = solved[0] && solved[1] ? -1 : solved[0] ? 0 : 1;
-            G.why = solved[0] && solved[1] ? '같은 턴에 둘 다 맞혔어요' : G.turn + '턴 만에 맞혔어요';
-          } else if (G.turn >= G.maxT) {
-            G.ph = 'end';
-            const gc = [0, 1].map((s) => G.fb[s][G.fb[s].length - 1].split('').filter((x) => x === 'g').length);
-            G.win = gc[0] === gc[1] ? -1 : gc[0] > gc[1] ? 0 : 1;
-            G.why = G.maxT + '턴 종료: 마지막 줄 초록 ' + gc[0] + ' 대 ' + gc[1];
+            G.win = solved[0] ? 0 : 1;
+            G.why = G.turn + '턴 만에 맞혔어요' + (G.rematch ? ' (재경기 ' + G.rematch + '번 끝에)' : '');
           } else G.turn++;
         }
         return;
@@ -167,14 +178,14 @@
     },
     pending(G) {
       if (G.ph === 'set') return [0, 1].filter((s) => !G.sec[s]);
-      if (G.ph === 'guess') return [0, 1].filter((s) => !G.sub[s]);
+      if (G.ph === 'guess') return [0, 1].filter((s) => G.sub[s] == null);
       return [];
     },
-    timeLimit(G) { return G.ph === 'set' ? 180000 : 150000; },
-    timeout(G, seat) { return { t: G.ph === 'set' ? 'sec' : 'g', eq: genEquation(G.len, G.pow) }; },
+    timeLimit(G) { return 300000; }, // 정답 정하기·수식 제시 모두 5분
+    timeout(G, seat) { return G.ph === 'set' ? { t: 'sec', eq: genEquation(G.len, G.pow) } : { t: 'g', skip: 1 }; },
     bot(G, seat) { return engine.timeout(G, seat); },
     publicView(G) {
-      return { len: G.len, pow: G.pow, ph: G.ph, turn: G.turn, maxT: G.maxT, gs: G.gs, fb: G.fb, sub: G.sub.map((x) => (x ? 1 : 0)), set: G.sec.map((x) => (x ? 1 : 0)), win: G.win, why: G.why, sec: G.ph === 'end' ? G.sec : null };
+      return { len: G.len, pow: G.pow, ph: G.ph, turn: G.turn, gs: G.gs, fb: G.fb, sub: G.sub.map((x) => (x != null ? 1 : 0)), set: G.sec.map((x) => (x ? 1 : 0)), win: G.win, why: G.why, rematch: G.rematch, sec: G.ph === 'end' ? G.sec : null };
     },
     over(G) { return G.ph === 'end'; },
     results(G) { return { win: G.win, scores: [0, 1].map((s) => (s === G.win ? 1 : 0)) }; },
@@ -272,7 +283,8 @@
         renderGame(g, s) {
           const W = s.W, st = W.s, me = s.mySeat, len = st.len;
           const L = s.local;
-          if (L.gn !== W.gn) { L.gn = W.gn; L.buf = ''; L.secret = null; L.shake = false; L.msg = ''; }
+          const gk = W.gn + ':' + (st.rematch || 0);
+          if (L.gn !== gk) { L.gn = gk; L.buf = ''; L.secret = null; L.shake = false; L.msg = st.rematch ? '같은 턴에 둘 다 맞혀서 재경기! 새 비밀 수식을 정하세요.' : ''; }
           const names = W.pl.map((p) => p.n);
           const timer = (seat) => h('span', { class: 'timer', 'data-timer-seat': seat });
           function onKey(k) {
@@ -294,7 +306,7 @@
           keyHandler = onKey;
           const head = h('div', { class: 'duel-head' },
             names.map((n, i) => h('span', { class: 'duel-name' + (i === me ? ' me' : '') }, h('span', { class: 'seat-dot', style: { background: `var(--p${i})` } }), n, i === me ? ' (나)' : '')),
-            h('span', { class: 'turn-pill' }, st.ph === 'set' ? '수식 정하기' : st.ph === 'guess' ? st.turn + ' / ' + st.maxT + '턴' : '종료'));
+            h('span', { class: 'turn-pill' }, st.ph === 'set' ? '수식 정하기' : st.ph === 'guess' ? st.turn + '턴' + (st.rematch ? ' · 재경기 ' + st.rematch : '') : '종료'));
           g.append(head);
 
           if (st.ph === 'set') {
@@ -343,7 +355,7 @@
     name: '수식 신호등',
     kicker: '추리 퍼즐',
     players: '혼자 · 1:1 온라인',
-    blurb: '숨은 등식을 초록·노랑·빨강 신호만 보고 맞힙니다. 7~10칸, 거듭제곱 포함 여부가 매번 바뀌어요.',
+    blurb: '숨은 등식을 초록·노랑·빨강 신호만 보고 맞힙니다. 같은 문자를 많이 넣으면 남는 뒤쪽은 빨강! 1:1에서는 서로의 9칸 수식을 먼저 맞히면 이겨요.',
     accent: 'signal',
     mount,
     rules: `
@@ -351,28 +363,29 @@
 <div class="demo" data-demo="rules-signal"></div>
 <ul>
 <li>매번 칸 수에 맞춰 한 줄을 냅니다. 내는 줄은 <b>참인 등식이 아니어도 되고, = 가 없어도 됩니다.</b> 어떤 숫자나 기호든 아무 자리에 넣어서 그 문자가 정답에 있는지, 어디 있는지 확인할 수 있습니다. 예: <code>123456789</code>, <code>=0+−×÷=−×</code></li>
-<li>숨은 정답은 항상 참인 등식입니다. 예: <code>7×8−29=27</code></li>
+<li>숨은 정답은 항상 참인 등식입니다. 예: <code>7×8−29=27</code>. 등호는 1개 이상 쓸 수 있고(예: <code>2+2=4=1+3</code>), 등호로 나뉜 값이 모두 같아야 합니다.</li>
 <li>입력하면 칸마다 신호가 켜집니다.
   <ul>
   <li><span class="dot g"></span> <b>초록</b>: 그 문자가 그 자리에 정확히 있음</li>
-  <li><span class="dot y"></span> <b>노랑</b>: 그 문자가 정답 어딘가에 있음. 몇 번 나오는지는 세지 않습니다.</li>
+  <li><span class="dot y"></span> <b>노랑</b>: 그 문자가 정답에 있지만 다른 자리에 있음</li>
   <li><span class="dot r"></span> <b>빨강</b>: 정답에 없는 문자</li>
+  <li>같은 문자를 정답에 들어 있는 개수보다 많이 내면, <b>남는 뒤쪽 문자는 모두 빨강</b>입니다. 예: 정답에 1이 두 개뿐인데 1을 일곱 번 내면 두 개만 초록·노랑이고 나머지는 빨강이에요.</li>
   </ul></li>
 <li>계산 순서는 거듭제곱 → 곱셈·나눗셈 → 덧셈·뺄셈입니다. 0이 아닌 수의 0제곱은 1이고, 0의 0제곱은 쓸 수 없습니다.</li>
-<li>두 자리 이상의 수는 0으로 시작할 수 없고, 맨 앞에 −를 붙인 음수도 쓸 수 없습니다. = 양쪽 모두 식이어도 됩니다.</li>
+<li>정답 수식에서는 두 자리 이상의 수를 0으로 시작할 수 없고(05 ✗), 기호를 연달아 쓸 수 없으며(음수 ✗), 곱셈 기호를 생략할 수 없습니다. 등호 양쪽 모두 식이어도 됩니다.</li>
 </ul>
 <h4>혼자 풀기</h4>
 <p>7칸은 6번, 8칸은 7번, 9~10칸은 8번 안에 맞히면 성공입니다. “랜덤 변형”은 칸 수와 거듭제곱 포함 여부를 무작위로 바꿉니다.</p>
 <h4>1:1 온라인</h4>
-<p>두 사람이 각자 상대가 맞힐 비밀 수식을 정합니다. 비밀 수식은 참인 등식이어야 합니다. 그다음 매 턴 동시에 한 줄씩 추리를 냅니다. 먼저 맞힌 사람이 이기고, 같은 턴에 둘 다 맞히면 무승부입니다. 10턴 안에 아무도 못 맞히면 10턴째 줄의 초록 개수가 많은 쪽이 이깁니다.</p>`,
+<p>두 사람이 5분 안에 상대가 맞힐 비밀 수식(기본 9칸, 참인 등식)을 정합니다. 그다음 매 턴 5분 안에 동시에 한 줄씩 냅니다. 시간 안에 내지 못하면 그 턴은 색 공개가 없습니다. 모든 칸이 초록이 되면 이기고, <b>같은 턴에 둘 다 맞히면 한쪽만 이길 때까지 비밀 수식부터 다시 정해 재경기</b>합니다. 턴 수 제한은 없습니다.</p>`,
     guide: `
 <h4>1. 첫 줄은 정보를 모으는 줄</h4>
 <p>내는 줄은 등식이 아니어도 되니, 첫 줄은 맞히려 하지 말고 서로 다른 문자를 최대한 많이 확인하는 데 씁니다. 9칸이라면 <code>123456789</code>처럼 숫자만 몰아 넣어 어떤 숫자가 쓰이는지 한 번에 알아냅니다. 둘째 줄은 남은 0과 + − × ÷ ^ = 같은 기호를 모아 시험합니다. 문자가 겹치지 않을수록 빨강이 많이 나와서 후보가 빨리 줄어듭니다.</p>
 <h4>2. = 의 위치부터 확정하기</h4>
 <p>= 가 어디 있는지 알면 오른쪽 값의 자릿수가 정해지고, 왼쪽 식의 크기도 따라서 정해집니다. 오른쪽이 한 자리면 빼기나 나누기, 세 자리 이상이면 곱셈이나 거듭제곱일 가능성이 큽니다.</p>
-<p>같은 문자를 여러 자리에 넣으면 그 문자가 실제로 있는 자리는 초록, 나머지는 노랑으로 켜집니다. 그래서 = 를 서너 자리에 흩어 놓으면 = 의 자리가 한 줄 만에 드러납니다. 남는 칸에는 아직 확인하지 않은 문자를 채워 정보를 더 얻으세요.</p>
-<h4>3. 노랑은 개수를 알려주지 않는다</h4>
-<p>노랑은 “그 문자가 정답에 있다”는 뜻일 뿐입니다. 같은 문자를 두 번 넣었는데 하나가 초록이면, 다른 하나도 노랑으로 켜집니다. 그러니 노랑을 “하나 더 있다”로 읽으면 안 됩니다. 반대로 빨강은 그 문자가 어디에도 없다는 확실한 정보라서 가장 값집니다.</p>
+<p>같은 문자를 여러 자리에 넣으면 실제로 있는 자리는 초록, 정답보다 많이 넣은 나머지는 빨강으로 켜집니다. 그래서 = 를 서너 자리에 흩어 놓으면 = 의 자리와 개수가 한 줄 만에 드러납니다. 남는 칸에는 아직 확인하지 않은 문자를 채워 정보를 더 얻으세요.</p>
+<h4>3. 신호는 개수까지 알려 준다</h4>
+<p>같은 문자를 두 번 넣었을 때 하나가 초록이고 다른 하나가 노랑이면, 정답에 그 문자가 <b>두 개 이상</b> 있다는 뜻입니다. 다른 하나가 빨강이면 정확히 하나뿐이에요. 문자 하나를 서너 번 넣어 보는 줄은 그 문자의 개수와 자리를 한꺼번에 알려 줍니다. 아예 없는 문자는 빨강만 나와서 후보를 빠르게 지울 수 있어요.</p>
 <div class="demo" data-demo="signal"></div>
 <h4>4. 끝자리와 크기로 좁히기</h4>
 <ul>
@@ -384,9 +397,9 @@
 <p>^ 가 있는 판에서는 <b>0이 아닌 수의 0제곱은 1</b>, 1의 거듭제곱은 1, 0의 (0이 아닌) 거듭제곱은 0이라는 점을 꼭 떠올리세요. 예를 들어 <code>9^0+8=9</code>처럼 큰 숫자가 결과에 아무 영향을 주지 않는 식이 정답일 수 있습니다. 2^5=32, 3^4=81, 4^3=64, 5^3=125 정도는 외워두면 계산이 빨라집니다.</p>
 <h4>6. 1:1에서 수식 만들기와 마지막 턴</h4>
 <ul>
-<li>같은 문자를 반복해서 쓰면 노랑이 개수를 알려주지 않기 때문에 상대가 찾기 어렵습니다. 예: <code>11×11=121</code></li>
+<li>같은 문자를 여러 번 쓰면 상대가 개수를 확인하느라 줄을 더 써야 해서 찾기 어렵습니다. 예: <code>11×11=121</code>. 등호를 두 개 넣는 식(<code>2×6=12=3×4</code>)도 상대가 예상하기 어려워요.</li>
 <li>÷, ^0, 0처럼 사람들이 잘 시험하지 않는 문자를 섞으면 후보가 늦게 줄어듭니다.</li>
-<li>10턴째에는 맞힐 자신이 없더라도 초록이 가장 많이 나올 줄을 내는 것이 유리합니다. 판정은 마지막 줄의 초록 개수입니다. 등식이 아니어도 되니 자리마다 가장 가능성 높은 문자를 골라 채우세요.</li>
+<li>턴 제한이 없으니 서두르지 말고, 후보가 하나로 좁혀질 때까지 정보를 모으는 줄을 내는 것도 방법이에요. 다만 상대가 거의 다 맞힌 것 같으면 같은 턴에 맞혀 재경기로 끌고 가는 것도 노려 볼 만합니다.</li>
 </ul>`,
   });
 

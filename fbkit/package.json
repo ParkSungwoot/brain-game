@@ -1,0 +1,17 @@
+{
+  "name": "brain-game-fbkit",
+  "version": "1.0.0",
+  "description": "Firebase SDK 묶음(fb.js) 만들기와 로컬 에뮬레이터 시험 도구",
+  "scripts": {
+    "bundle": "esbuild fb-entry.js --bundle --minify --format=iife --target=es2019 --legal-comments=eof --outfile=fb.js",
+    "emulators": "firebase emulators:start --only database,auth --project psw-brain-survival",
+    "rules-test": "node rules-test.mjs"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "esbuild": "^0.21.5",
+    "firebase": "^10.12.2",
+    "firebase-tools": "^13.11.2"
+  },
+  "private": true
+}

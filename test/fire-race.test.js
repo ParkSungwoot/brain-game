@@ -1,0 +1,21 @@
+const { chromium } = require('playwright');
+const URL = 'http://127.0.0.1:8791/index.html';
+const EMU = () => { window.App = Object.assign(window.App || {}, { FIREBASE_EMU: { host: '127.0.0.1', authPort: 9099, dbPort: 9000 } }); };
+(async () => {
+  const b = await chromium.launch(); const cA = await b.newContext(), cB = await b.newContext();
+  await cA.addInitScript(EMU); await cB.addInitScript(EMU);
+  const A = await cA.newPage(), B = await cB.newPage(); const errs = [];
+  for (const p of [A, B]) p.on('pageerror', (e) => errs.push(e.message));
+  await A.goto(URL + '#nemo'); await A.click('button:text-is("온라인 경주")'); await A.fill('#nemo-nick', '방장');
+  await A.click('button:text-is("온라인 방 만들기")'); await A.waitForSelector('.lobby .code-tiles');
+  const code = await A.getAttribute('.lobby .code-tiles', 'data-code');
+  await B.goto(URL + '#nemo'); await B.click('button:text-is("온라인 경주")'); await B.fill('#nemo-nick', '친구'); await B.fill('#nemo-code', code); await B.click('button:text-is("참가하기")');
+  await A.waitForFunction(() => document.querySelectorAll('.seats .seat:not(.empty)').length === 2, null, { timeout: 15000 });
+  await A.click('button:text-is("+ 컴퓨터")'); await A.click('.seg-btn:text("3판")'); await A.click('button:text-is("게임 시작")');
+  await B.waitForSelector('#nemo-race-ans', { timeout: 15000 });
+  const ans = await B.evaluate(() => App.quick.lastPuzzle.hits.length);
+  await B.fill('#nemo-race-ans', String(ans)); await B.press('#nemo-race-ans', 'Enter');
+  await A.waitForSelector('.result-box', { timeout: 15000 });
+  console.log('A sees:', await A.textContent('.result-box .result-big'), '| B:', await B.textContent('.result-box .result-big'));
+  console.log('errors', errs.length ? errs : 'none'); await b.close();
+})();

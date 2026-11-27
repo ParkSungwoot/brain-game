@@ -1,0 +1,13 @@
+const { chromium } = require('playwright');
+const URL = 'file://' + __dirname + '/../dist/preview.html';
+(async () => { const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1000, height: 1000 } });
+  const errs = []; p.on('pageerror', (e) => errs.push(e.message));
+  await p.goto(URL + '#signal'); await p.waitForSelector('.kbd');
+  await p.click('.seg-btn:text-is("9칸")');
+  await p.keyboard.type('123456789'); await p.keyboard.press('Enter');
+  const r1 = await p.$$eval('.sq-board .sq-row:first-child .sq', (e) => e.map((x) => x.className.match(/f-(\w)/)?.[1] || '-').join(''));
+  await p.keyboard.type('+-*/^=+-*'); await p.keyboard.press('Enter');
+  const r2 = await p.$$eval('.sq-board .sq-row:nth-child(2) .sq', (e) => e.map((x) => x.className.match(/f-(\w)/)?.[1] || '-').join(''));
+  const hint = await p.textContent('.hint');
+  console.log('digits-only row graded:', r1, '| ops-only row graded:', r2, '|', hint.trim(), '| errors', errs.length ? errs : 'none');
+  await b.close(); })();

@@ -1,0 +1,12 @@
+{
+  "url": "https://parksungwoot.github.io/brain-game/",
+  "firebase": {
+    "apiKey": "AIzaSyDxivjcRok5ssmYc5qlNDMTLQFahiirfAo",
+    "authDomain": "psw-brain-survival.firebaseapp.com",
+    "databaseURL": "https://psw-brain-survival-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "projectId": "psw-brain-survival",
+    "storageBucket": "psw-brain-survival.firebasestorage.app",
+    "messagingSenderId": "358375461873",
+    "appId": "1:358375461873:web:2a0a47ee8a795a2dfe2a50"
+  }
+}

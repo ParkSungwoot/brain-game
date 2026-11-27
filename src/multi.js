@@ -106,6 +106,11 @@
     },
   });
   // 온라인 방에 못 들어오는 화면에 보여 줄 안내
+  // 남은 시간 글자: 1분 넘으면 3:05, 아니면 42초
+  App.leftText = (ms) => {
+    const t = Math.max(0, Math.ceil(ms / 1000));
+    return t > 60 ? Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0') : t + '초';
+  };
   App.ONLINE_BLOCKED = '이 화면에서는 온라인 방에 연결할 수 없어요. 로그인하지 않았거나, 공개 링크로만 들어온 경우예요. 친구와 같이 하려면 페이지 주인이 공유 메뉴에서 친구를 이메일로 초대하고, 친구가 초대받은 Claude 계정으로 로그인한 채 이 페이지를 열어야 해요.';
 
   const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -708,11 +713,11 @@
         if (!session || !session.W || session.W.ph !== 'play') return;
         view.querySelectorAll('[data-until]').forEach((el) => {
           const r = +el.dataset.until - Date.now();
-          el.textContent = r > 0 ? Math.ceil(r / 1000) + '초' : '0초';
+          el.textContent = App.leftText(r);
         });
         view.querySelectorAll('[data-timer-seat]').forEach((el) => {
           const r = session.remaining(+el.dataset.timerSeat);
-          el.textContent = r == null ? '' : Math.ceil(r / 1000) + '초';
+          el.textContent = r == null ? '' : App.leftText(r);
         });
       }, 300);
 

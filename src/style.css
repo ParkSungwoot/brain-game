@@ -804,3 +804,12 @@ tr.me td { background: var(--accent-soft); }
 .demo-box .jg-pat { grid-template-columns: repeat(5, 7px); grid-auto-rows: 7px; }
 .demo-box .demo-cards { flex-wrap: wrap; }
 .demo-box .demo-cname { width: 44px; }
+/* 수식의 탑 (방송 규칙) */
+.chip-tag.on { background: var(--accent-soft); color: var(--ink); border-color: var(--accent); }
+.demo-goal .chip-tag { margin-left: 6px; vertical-align: middle; }
+.tw-bids { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.tile.tb { letter-spacing: .02em; }
+.tw-col.moved .tw-base { background: var(--accent); }
+.btn.buzzer { font-size: 20px; padding-inline: 22px; }
+.tw-final { text-align: left; margin: 8px auto; padding-left: 1.4em; display: grid; gap: 4px; }
+.tw-final li.me { font-weight: 700; }

@@ -29,7 +29,7 @@ const URL = 'file://' + __dirname + '/../dist/preview.html';
   await page.screenshot({ path: SHOTS + 'magic.png', fullPage: true });
 
   // tower
-  await page.goto(URL + '#tower'); await page.waitForSelector('.declare', { timeout: 10000 });
+  await page.goto(URL + '#tower'); await page.click('.seg-btn:has-text("혼자 연습")'); await page.waitForSelector('.declare', { timeout: 10000 });
   await page.click('.declare .btn.primary');
   await page.click('.tw-col:nth-child(1) .tile >> nth=0').catch(()=>{});
   await page.screenshot({ path: SHOTS + 'tower.png', fullPage: true });

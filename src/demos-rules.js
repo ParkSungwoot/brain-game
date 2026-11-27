@@ -184,38 +184,31 @@
 
   // ---------- 수식의 탑 ----------
   add('rules-tower', (root) => {
-    const T = { a: { d: 3, o: '*' }, b: { d: 2, o: '+' }, c: { d: 4, o: '-' }, e: { d: 5, o: '*' }, f: { d: 1, o: '+' }, g: { d: 6, o: '-' } };
-    const tile = (id, face, sel) => {
-      const t = T[id];
-      const up = face ? App.eq.show(t.o) : String(t.d), back = face ? String(t.d) : App.eq.show(t.o);
-      return h('div', { class: 'tile ' + (face ? 'op' : 'num') + (sel ? ' sel' : '') }, h('span', { class: 'face' }, up), h('span', { class: 'back' }, back));
-    };
-    const col = (list, name, selN, hit, mark) => {
+    const C = App.towerCore;
+    const K = { p5: { d: 5, o: '' }, m4: { d: 4, o: '*' }, a3: { d: 3, o: '+' }, s2: { d: 2, o: '-' }, p7: { d: 7, o: '' }, a1: { d: 1, o: '+' } };
+    const ids = Object.keys(K), B = ids.map((k) => K[k]);
+    // 탑: 위에서 아래 순서
+    const col = (list, name, selN, mark) => {
       const st = h('div', { class: 'tw-stack' });
-      list.forEach(([id, f], i) => st.append(tile(id, f, i < selN)));
-      let read = '';
-      try {
-        if (list.length % 2 === 1) {
-          const v = App.eq.evalExpr(list.map(([id, f]) => (f ? T[id].o : String(T[id].d))).join(''));
-          read = list.map(([id, f]) => (f ? App.eq.show(T[id].o) : String(T[id].d))).join(' ') + ' = ' + App.eq.fracStr(v);
-        }
-      } catch (e) { read = ''; }
-      return h('div', { class: 'tw-col demo-tw' }, h('div', { class: 'tw-label' }, name), st, h('div', { class: 'tw-base' }),
-        h('div', { class: 'tw-read' + (hit ? ' hit' : '') + (mark === 'bad' ? ' miss' : '') }, (read || '식이 아님') + (mark === 'ok' ? ' ✓' : mark === 'bad' ? ' ✗' : '')));
+      list.forEach((id, i) => st.append(h('div', { class: 'tile tb ' + (K[id].o ? 'op' : 'num') + (i < selN ? ' sel' : '') }, C.face(K[id]))));
+      const r = C.readTower(B, list.slice().reverse().map((id) => ids.indexOf(id)));
+      return h('div', { class: 'tw-col demo-tw' }, h('div', { class: 'tw-label' }, name + ' · ' + list.length + '층'), st, h('div', { class: 'tw-base' }),
+        h('div', { class: 'tw-read' + (mark === 'ok' ? ' hit' : mark === 'bad' ? ' miss' : '') }, (r ? r.text + ' = ' + r.value : '식이 아님') + (mark === 'ok' ? ' ✓' : '')));
     };
-    const L0 = [['a', 0], ['b', 1], ['c', 0]], M0 = [['e', 0]], R0 = [['f', 1], ['g', 0]];
+    const L0 = ['a3', 'm4', 'p5'], M0 = ['p7', 's2'], R0 = ['a1'];
     const steps = [
-      { L: L0, M: M0, R: R0, cap: '블록마다 한 면엔 숫자, 다른 면엔 기호가 있어요. 큰 글씨가 보이는 면, 오른쪽 위 작은 글씨가 뒷면이에요.', ms: 3800 },
-      { L: L0, M: M0, R: R0, hitL: true, cap: '탑은 위에서 아래로 읽어요. 왼쪽 탑 = 3 + 4 = 7. 곱셈은 먼저 계산해요.' },
-      { L: L0, M: M0, R: R0, goal: true, cap: '이번 목표: 높이 3짜리 탑 하나를 값 10으로 만들기. 시작 전에 몇 번 만에 만들지 선언해요.', ms: 3400 },
-      { L: L0, M: M0, R: R0, sel: 2, goal: true, cap: '한 번의 이동: 한 탑의 맨 위에서 원하는 개수만큼 집어요. (왼쪽 위 2개)' },
-      { L: [['c', 0]], M: [['a', 0], ['b', 1], ['e', 0]], R: R0, goal: true, markM: 'bad', cap: '그대로 가운데 탑에 올리면 3 + 5 = 8. 아쉽게도 10이 아니에요.', ms: 3000 },
-      { L: [['c', 0]], M: [['b', 0], ['a', 1], ['e', 0]], R: R0, goal: true, markM: 'ok', cap: '통째로 뒤집어 올리면 순서가 거꾸로, 면도 모두 반대로! 2 × 5 = 10 → 1번 만에 성공!', ms: 4200 },
-      { L: [['c', 0]], M: [['b', 0], ['a', 1], ['e', 0]], R: R0, cap: '선언한 횟수 안에 만들면 +1점, 가장 짧은 수와 똑같이 선언해 성공하면 +2점, 실패하면 −1점.', ms: 3800 },
+      { L: L0, M: M0, R: R0, cap: '블록은 기호가 없는 숫자 블록(5, 7)과 기호가 붙은 숫자 블록(+3, ×4…)이 있어요. 세 자리에 나뉘어 쌓여 있어요.', ms: 3800 },
+      { L: L0, M: M0, R: R0, markM: 'ok0', markL: 'bad', cap: '탑은 맨 위층부터 아래로 읽어요. 가운데 = 7 − 2 = 5. 맨 위층은 기호 없는 숫자여야 해서, 맨 위가 +3인 왼쪽은 식이 아니에요.', ms: 4400 },
+      { L: L0, M: M0, R: R0, goal: true, bids: [['A', 2, '최초']], cap: '문제 공개: 타깃 넘버 23, 목표 층수 3층. 5분 안에 버저를 눌러 몇 번 만에 만들지 제시해요. A: “2번!”', ms: 4000 },
+      { L: L0, M: M0, R: R0, goal: true, bids: [['A', 2, '최초'], ['나', 1, '추가']], cap: '처음 제시가 나오면 다른 사람은 2분 동안 더 적은 횟수를 한 번씩 부를 수 있어요. 나: “1번!”', ms: 4000 },
+      { L: L0, M: M0, R: R0, goal: true, sel: 3, bids: [['나', 1, '추가']], cap: '가장 적게 부른 사람만 도전해요. 왼쪽 위에서부터 3개를 한꺼번에 들어 올려서…' },
+      { L: ['p5', 'm4', 'a3'], M: M0, R: R0, goal: true, okL: true, bids: [['나', 1, '추가']], cap: '위아래로 뒤집어 제자리에 놓으면 5 × 4 + 3 = 23, 3층! 1번 만에 성공 → 추가 시간 제시라 +2점.', ms: 4400 },
+      { L: ['p5', 'm4', 'a3'], M: M0, R: R0, cap: '처음 5분에 제시한 사람이 도전하면 성공 +1 / 실패 −1, 추가 2분에 부른 사람은 +2 / −2. 탑은 그대로 다음 라운드로 이어지고, 누군가 7점이면 끝나요.', ms: 4600 },
     ];
     player(root, '수식의 탑 규칙', steps, (stage, s) => {
-      if (s.goal) stage.append(h('div', { class: 'demo-goal' }, '목표 ', h('b', null, '10'), ' · 높이 ', h('b', null, '3')));
-      stage.append(h('div', { class: 'demo-towers three' }, col(s.L, '왼쪽', s.sel || 0, s.hitL), col(s.M, '가운데', 0, s.markM === 'ok', s.markM), col(s.R, '오른쪽', 0)));
+      if (s.goal) stage.append(h('div', { class: 'demo-goal' }, '타깃 ', h('b', null, '23'), ' · ', h('b', null, '3층'),
+        s.bids ? s.bids.map(([n, v, w], i) => h('span', { class: 'chip-tag' + (i === s.bids.length - 1 ? ' on' : '') }, n + ' ' + v + '번 (' + w + ')')) : null));
+      stage.append(h('div', { class: 'demo-towers three' }, col(s.L, '왼쪽', s.sel || 0, s.okL ? 'ok' : s.markL), col(s.M, '가운데', 0, s.markM === 'ok0' ? 'ok' : ''), col(s.R, '오른쪽', 0)));
     });
   });
 

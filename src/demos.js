@@ -99,27 +99,23 @@
 
   // ---------- 수식의 탑: 묶음 뒤집기 ----------
   D.tower = (root) => {
-    const T = { a: { d: 3, o: '*' }, b: { d: 5, o: '+' }, c: { d: 4, o: '-' }, e: { d: 2, o: '-' } };
-    const tile = (id, face, sel) => {
-      const t = T[id];
-      const up = face ? App.eq.show(t.o) : String(t.d), back = face ? String(t.d) : App.eq.show(t.o);
-      return h('div', { class: 'tile ' + (face ? 'op' : 'num') + (sel ? ' sel' : '') }, h('span', { class: 'face' }, up), h('span', { class: 'back' }, back));
-    };
-    // 탑: 위에서 아래 순서로 [id, 면(0 숫자/1 기호)]
+    const C = App.towerCore;
+    const K = { a3: { d: 3, o: '+' }, p6: { d: 6, o: '' }, m4: { d: 4, o: '*' } };
+    const ids = Object.keys(K), B = ids.map((k) => K[k]);
+    // 탑: 위에서 아래 순서
     const steps = [
-      { A: [['a', 0], ['b', 1], ['c', 0]], B: [['e', 0]], sel: 0, cap: '탑은 위에서 아래로 읽어요. 왼쪽 탑 = 3 + 4 = 7' },
-      { A: [['a', 0], ['b', 1], ['c', 0]], B: [['e', 0]], sel: 2, cap: '왼쪽 탑 위의 2개(3과 +)를 한 번에 집어요.' },
-      { A: [['c', 0]], B: [['b', 0], ['a', 1], ['e', 0]], sel: 0, cap: '뒤집어서 오른쪽 탑에 올리면 순서가 거꾸로 되고, 모든 블록의 면이 바뀌어요.', ms: 3400 },
-      { A: [['c', 0]], B: [['b', 0], ['a', 1], ['e', 0]], sel: 0, read: true, cap: '이동 1번으로 오른쪽 탑 = 5 × 2 = 10. 작은 글씨(뒷면)를 보고 미리 계산해 두세요.', ms: 3600 },
+      { A: ['a3', 'p6'], B: ['m4'], sel: 0, cap: '왼쪽 탑은 맨 위가 +3이라 식이 아니에요. 기호 없는 6이 그 아래에 깔려 있어요.', ms: 3400 },
+      { A: ['a3', 'p6'], B: ['m4'], sel: 2, cap: '왼쪽 위에서부터 2개를 한 번에 들어 올려요.' },
+      { A: [], B: ['p6', 'a3', 'm4'], sel: 0, cap: '위아래로 뒤집어 오른쪽에 놓으면 순서가 거꾸로! 6이 맨 위로 올라와요.', ms: 3400 },
+      { A: [], B: ['p6', 'a3', 'm4'], sel: 0, read: true, cap: '이동 1번으로 오른쪽 = 6 + 3 × 4 = 18. 곱셈을 먼저 계산해요.', ms: 3600 },
     ];
     player(root, '묶음을 뒤집어 옮기면?', steps, (stage, s) => {
       const col = (list, name, selN) => {
         const st = h('div', { class: 'tw-stack' });
-        list.forEach(([id, f], i) => st.append(tile(id, f, i < selN)));
-        const toks = list.map(([id, f]) => (f ? App.eq.show(T[id].o) : String(T[id].d)));
-        let read = '';
-        try { if (toks.length % 2 === 1) { const v = App.eq.evalExpr(list.map(([id, f]) => (f ? T[id].o : String(T[id].d))).join('')); read = toks.join(' ') + ' = ' + App.eq.fracStr(v); } } catch (e) { read = ''; }
-        return h('div', { class: 'tw-col demo-tw' }, h('div', { class: 'tw-label' }, name), st, h('div', { class: 'tw-base' }), h('div', { class: 'tw-read' + (s.read && name === '오른쪽' ? ' hit' : '') }, read || '식이 아님'));
+        list.forEach((id, i) => st.append(h('div', { class: 'tile tb ' + (K[id].o ? 'op' : 'num') + (i < selN ? ' sel' : '') }, C.face(K[id]))));
+        const r = C.readTower(B, list.slice().reverse().map((id) => ids.indexOf(id)));
+        return h('div', { class: 'tw-col demo-tw' }, h('div', { class: 'tw-label' }, name), st, h('div', { class: 'tw-base' }),
+          h('div', { class: 'tw-read' + (s.read && name === '오른쪽' ? ' hit' : '') }, r ? r.text + ' = ' + r.value : list.length ? '식이 아님' : '비어 있음'));
       };
       stage.append(h('div', { class: 'demo-towers' }, col(s.A, '왼쪽', s.sel), col(s.B, '오른쪽', 0)));
     });

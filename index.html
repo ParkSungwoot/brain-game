@@ -840,6 +840,17 @@ tr.me td { background: var(--accent-soft); }
 .tw-final { text-align: left; margin: 8px auto; padding-left: 1.4em; display: grid; gap: 4px; }
 .tw-final li.me { font-weight: 700; }
 
+/* 게임 화면 머리: 뒤로 + 음악 버튼 */
+.ghead-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.music-btn { font: inherit; font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 999px; border: 2px solid var(--line-strong); background: var(--surface); color: var(--ink); cursor: pointer; white-space: nowrap; }
+.music-btn.off { color: var(--muted); }
+.music-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* 동시 접속자 가득 참 / 연결 안 됨 안내 */
+.online-count.down { display: block; width: auto; color: var(--ink); border: 2px dashed var(--accent); padding: 8px 12px; line-height: 1.6; font-size: 14px; }
+.online-count.down .dot { display: inline-block; margin-right: 6px; vertical-align: middle; }
+.online-count.down .dot { background: var(--sig-r); }
+.online-count.down .btn { margin-left: 4px; }
+
 </style>
 <div id="topband"></div>
 <div id="app"></div>
@@ -1085,7 +1096,39 @@ tr.me td { background: var(--accent-soft); }
   let live = 0, offTimer = null;
   let offset = 0;
 
+  // ----- 연결 상태: 'idle' 시작 전 | 'connecting' | 'ok' | 'full' 접속자 가득(로그인은 됐는데 DB 연결이 안 됨) | 'offline' -----
+  // 무료 요금제는 동시 연결 100개까지라, 넘으면 새 연결이 거절돼요. 거절은 오류 없이 재시도만 반복되므로 시간으로 판단
+  const CONNECT_WAIT = 9000;
+  let status = 'idle', stTimer = null, paused = false, autoTimer = null, K0 = null;
+  let connected = false; // .info/connected 의 실제 값 (멈춰 둔 동안에도 갱신)
+  const statusSubs = new Set();
+  function setStatus(s) {
+    if (s === status) return;
+    status = s;
+    clearInterval(autoTimer); autoTimer = null;
+    // 가득 찬 동안에는 30초마다 다시 붙어 봄 (재시도 간격이 몇 분까지 늘어나는 것을 막음)
+    if ((s === 'full' || s === 'offline') && K0) autoTimer = setInterval(() => { if (!document.hidden && !paused) softRetry(); }, 30000);
+    for (const fn of statusSubs) { try { fn(s); } catch (e) { /* 무시 */ } }
+  }
+  function armWait() {
+    clearTimeout(stTimer);
+    stTimer = setTimeout(() => {
+      if (!paused && !connected) setStatus(navigator.onLine === false ? 'offline' : 'full');
+    }, CONNECT_WAIT);
+  }
+  function resumeFromPause(K) {
+    paused = false;
+    try { K.F.goOnline(K.db); } catch (e) { /* 무시 */ }
+    if (!connected) { if (status === 'ok') setStatus('connecting'); armWait(); }
+  }
+  function softRetry() {
+    if (!K0) return;
+    try { K0.F.goOffline(K0.db); K0.F.goOnline(K0.db); } catch (e) { /* 무시 */ }
+    armWait();
+  }
+
   async function boot() {
+    if (status === 'idle' || status === 'offline') setStatus('connecting');
     if (!globalThis.FB) await loadScript(App.FB_SRC || 'fb.js');
     const F = globalThis.FB;
     const app = F.initializeApp(App.FIREBASE);
@@ -1109,9 +1152,18 @@ tr.me td { background: var(--accent-soft); }
   const countSubs = new Set();
   function startOnline(K) {
     const F = K.F;
+    K0 = K;
     const me = F.ref(K.db, 'online/' + rid());
     F.onValue(K.connRef, (s) => {
-      if (s.val() !== true) return;
+      connected = s.val() === true;
+      if (!connected) {
+        if (paused) return;
+        if (status !== 'full' && status !== 'offline') setStatus('connecting');
+        armWait();
+        return;
+      }
+      clearTimeout(stTimer);
+      setStatus('ok');
       F.set(me, { u: K.uid, t: F.serverTimestamp() }).then(() => F.onDisconnect(me).remove()).catch(() => {});
     });
     F.onValue(F.ref(K.db, 'online'), (snap) => {
@@ -1122,15 +1174,19 @@ tr.me td { background: var(--accent-soft); }
     let hideT = null;
     document.addEventListener('visibilitychange', () => {
       clearTimeout(hideT);
-      if (document.hidden) hideT = setTimeout(() => { if (live === 0) { try { F.goOffline(K.db); } catch (e) { /* 무시 */ } } }, 60000);
-      else { try { F.goOnline(K.db); } catch (e) { /* 무시 */ } }
+      if (document.hidden) hideT = setTimeout(() => { if (live === 0) { paused = true; clearTimeout(stTimer); try { F.goOffline(K.db); } catch (e) { /* 무시 */ } } }, 60000);
+      else if (paused) { resumeFromPause(K); }
     });
   }
   function kit() {
-    if (!kitP) { kitP = boot(); kitP.catch(() => { kitP = null; }); }
+    if (!kitP) { kitP = boot(); kitP.catch(() => { kitP = null; setStatus('offline'); }); }
     return kitP;
   }
-  function online(K) { live++; clearTimeout(offTimer); try { K.F.goOnline(K.db); } catch (e) { /* 무시 */ } }
+  function online(K) {
+    live++; clearTimeout(offTimer);
+    if (paused) resumeFromPause(K);
+    else { try { K.F.goOnline(K.db); } catch (e) { /* 무시 */ } }
+  }
   function offline() { live = Math.max(0, live - 1); }
 
   class FireRoom {
@@ -1217,6 +1273,41 @@ tr.me td { background: var(--accent-soft); }
       return () => countSubs.delete(fn);
     },
     limit: 100,
+    // 연결 상태 ('connecting' | 'ok' | 'full' | 'offline')와 안내 글
+    status: () => status,
+    onStatus(fn) {
+      statusSubs.add(fn);
+      try { fn(status); } catch (e) { /* 무시 */ }
+      kit().catch(() => {});
+      return () => statusSubs.delete(fn);
+    },
+    // o.bots === false: 컴퓨터 상대가 없는 게임(수식 신호등 1:1 등)이라 혼자 연습만 안내
+    problemText(s, o) {
+      s = s || status;
+      const alt = o && o.bots === false ? '혼자 연습(혼자 풀기)은 그대로 할 수 있어요.' : '혼자 연습과 컴퓨터와 대결은 그대로 할 수 있어요.';
+      if (s === 'offline') return '인터넷 연결이 불안정해서 온라인 서버에 연결되지 않아요. ' + alt;
+      return '지금 동시 접속자가 가득 차서(최대 100명) 온라인 서버에 들어갈 수 없어요. ' + alt;
+    },
+    // ms 안에 서버에 연결되면 true, 아니면 false (가득 찼거나 끊긴 상태면 한 번 다시 붙어 봄)
+    async ready(ms) {
+      try { await kit(); } catch (e) { return false; }
+      if (connected) return true;
+      // 이미 가득 찬 것으로 안 뒤라면 한 번 다시 붙어 보고 짧게만 기다림
+      const known = status === 'full' || status === 'offline';
+      if (known) softRetry();
+      if (paused && K0) resumeFromPause(K0);
+      return new Promise((resolve) => {
+        const fn = (st) => { if (st === 'ok') { clearTimeout(t); statusSubs.delete(fn); resolve(true); } };
+        const t = setTimeout(() => { statusSubs.delete(fn); resolve(connected); }, known ? Math.min(ms || 4000, 4000) : (ms || CONNECT_WAIT + 1000));
+        statusSubs.add(fn);
+      });
+    },
+    retry: () => softRetry(),
+    // 서버 응답을 ms 까지만 기다림 (가득 찬 동안은 응답이 오지 않고 멈춰 있기 때문)
+    wait(p, ms) {
+      let t;
+      return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej({ code: 'timeout', message: '서버 응답이 없어요' }), ms || 8000); })]).finally(() => clearTimeout(t));
+    },
     uid: async () => (await kit()).uid,
     // 기록 저장: results/{묶음}/{내 uid} = { n: 이름, r: 문제별 기록, at } (처음 한 번만 쓸 수 있음)
     async saveResult(key, name, r) {
@@ -1239,6 +1330,235 @@ tr.me td { background: var(--accent-soft); }
         const v = (await F.get(F.ref(K.db, 'sets/' + name))).val();
         return v ? Object.assign({ key: v.key, at: v.at }, JSON.parse(v.d)) : null;
       } catch (e) { return null; }
+    },
+  };
+})();
+
+/* ---- music.js ---- */
+/* 배경 음악: 음악 파일 없이 Web Audio로 그때그때 만드는 8비트 긴장감 반복곡 (이 사이트에서 새로 만든 곡)
+ *
+ * - 게임이 시작되면 App.music.claim(이름), 끝나면 App.music.release(이름). 붙잡은 곳이 하나라도 있으면 재생
+ * - 켜기/끄기는 App.music.button() 버튼으로. 설정은 이 브라우저에 기억
+ * - 브라우저는 사용자가 한 번 누르기 전에는 소리를 막으므로, 첫 터치·클릭·키 입력 때 오디오를 깨움
+ * - 남은 시간이 얼마 안 남으면 App.music.hurry(true) → 빨라지고 하이햇이 촘촘해짐
+ */
+(function () {
+  const App = (globalThis.App = globalThis.App || {});
+  const KEY = 'music.on';
+  const VOL = 0.17;
+
+  let on = true;
+  try { on = App.store ? App.store.get(KEY, true) !== false : true; } catch (e) { on = true; }
+  let ctx = null, master = null, pulse12 = null, pulse25 = null, noise = null;
+  let gestured = false, playing = false, timer = null, step = 0, nextT = 0, hurry = false, idleT = null;
+  // 'running'·'closed' 가 아니면 깨워야 함 (iOS 사파리는 전화·다른 앱 소리 뒤 'interrupted' 상태가 됨)
+  const asleep = () => ctx && ctx.state !== 'running' && ctx.state !== 'closed';
+  const wake = () => { if (asleep()) ctx.resume().catch(() => {}); };
+  const holders = new Set();
+  const buttons = new Set();
+
+  // ---------- 곡 (A단조, 16분음표 단위, 8마디 반복) ----------
+  const BARS = 8, SPB = 16;
+  // 마디별 화음: 근음(베이스)과 아르페지오 음
+  const CH = {
+    Am: { r: 45, a: [69, 72, 76] }, F: { r: 41, a: [65, 69, 72] }, Dm: { r: 38, a: [62, 65, 69] },
+    E: { r: 40, a: [64, 68, 71] }, G: { r: 43, a: [67, 71, 74] },
+  };
+  const PROG = ['Am', 'F', 'Dm', 'E', 'Am', 'F', 'G', 'E'];
+  // 멜로디: [시작 칸, 음, 길이(칸)]
+  const LEAD = [
+    [[0, 76, 3], [4, 77, 1], [5, 76, 3], [8, 72, 2], [10, 74, 2], [12, 76, 4]],
+    [[0, 77, 3], [4, 76, 1], [5, 74, 3], [8, 72, 4], [12, 69, 4]],
+    [[0, 74, 2], [2, 72, 2], [4, 74, 2], [6, 77, 2], [8, 76, 6], [14, 74, 2]],
+    [[0, 71, 4], [4, 68, 2], [6, 71, 2], [8, 76, 8]],
+    [[0, 81, 3], [4, 79, 1], [5, 77, 3], [8, 76, 4], [12, 72, 4]],
+    [[0, 77, 2], [2, 76, 2], [4, 74, 4], [8, 72, 2], [10, 74, 2], [12, 77, 4]],
+    [[0, 79, 3], [4, 77, 1], [5, 74, 3], [8, 71, 4], [12, 74, 4]],
+    [[0, 76, 2], [2, 75, 2], [4, 76, 2], [6, 80, 2], [8, 83, 8]],
+  ];
+  const BASS = [0, 0, 12, 0, 0, 12, 0, 7]; // 8분음표마다 근음에서 몇 반음 위
+
+  const freq = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  const stepDur = () => 60 / (hurry ? 162 : 138) / 4;
+
+  function pulseWave(c, duty) {
+    const n = 48, re = new Float32Array(n), im = new Float32Array(n);
+    for (let k = 1; k < n; k++) {
+      re[k] = Math.sin(2 * Math.PI * k * duty) / (k * Math.PI);
+      im[k] = (1 - Math.cos(2 * Math.PI * k * duty)) / (k * Math.PI);
+    }
+    return c.createPeriodicWave(re, im);
+  }
+
+  function ensureCtx() {
+    if (ctx) return ctx;
+    const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
+    if (!AC) return null;
+    try { ctx = new AC(); } catch (e) { ctx = null; return null; }
+    master = ctx.createGain();
+    master.gain.value = 0;
+    const comp = ctx.createDynamicsCompressor();
+    master.connect(comp); comp.connect(ctx.destination);
+    pulse12 = pulseWave(ctx, 0.125);
+    pulse25 = pulseWave(ctx, 0.25);
+    const len = Math.floor(ctx.sampleRate * 0.5);
+    noise = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = noise.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    ctx.onstatechange = () => update();
+    return ctx;
+  }
+
+  function tone(wave, midi, t, dur, vol) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    if (typeof wave === 'string') o.type = wave; else o.setPeriodicWave(wave);
+    o.frequency.setValueAtTime(freq(midi), t);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.006);
+    g.gain.setValueAtTime(vol, t + dur * 0.65);
+    g.gain.linearRampToValueAtTime(0, t + dur);
+    o.connect(g); g.connect(master);
+    o.start(t); o.stop(t + dur + 0.03);
+  }
+  function kick(t) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(140, t);
+    o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
+    g.gain.setValueAtTime(0.9, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    o.connect(g); g.connect(master);
+    o.start(t); o.stop(t + 0.18);
+  }
+  function hiss(t, dur, vol, hp) {
+    const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    s.buffer = noise;
+    f.type = 'highpass'; f.frequency.value = hp;
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    s.connect(f); f.connect(g); g.connect(master);
+    s.start(t, Math.random() * 0.4); s.stop(t + dur + 0.02);
+  }
+
+  function playStep(i, t) {
+    const bar = Math.floor(i / SPB) % BARS, s = i % SPB, sd = stepDur();
+    const ch = CH[PROG[bar]];
+    // 베이스: 8분음표
+    if (s % 2 === 0) tone('triangle', ch.r + BASS[s / 2], t, sd * 1.8, 0.55);
+    // 아르페지오: 16분음표, 작게
+    tone(pulse12, ch.a[[0, 1, 2, 1][s % 4]] + (bar % 2 && s >= 8 ? 12 : 0), t, sd * 0.9, 0.07);
+    // 멜로디
+    for (const [st, m, len] of LEAD[bar]) if (st === s) tone(pulse25, m, t, sd * len * 0.95, 0.16);
+    // 북
+    if (s === 0 || s === 8 || (hurry && (s === 10 || s === 14))) kick(t);
+    if (s === 4 || s === 12) hiss(t, 0.13, 0.35, 1400);
+    if (hurry ? true : s % 2 === 0) hiss(t, 0.035, s % 4 === 2 ? 0.16 : 0.09, 7000);
+    // 마지막 마디 끝: 다음 바퀴로 넘어가는 북 채우기
+    if (bar === BARS - 1 && s >= 12) hiss(t, 0.08, 0.22, 2200);
+  }
+
+  function schedule() {
+    if (!playing || !ctx) return;
+    const now = ctx.currentTime;
+    if (nextT < now - 0.05) nextT = now + 0.03; // 탭이 잠깐 멈췄다 돌아오면 한꺼번에 몰아 치지 않게
+    while (nextT < now + 0.12) {
+      playStep(step, nextT);
+      nextT += stepDur();
+      step = (step + 1) % (BARS * SPB);
+    }
+  }
+
+  function startLoop() {
+    clearTimeout(idleT);
+    if (playing) return;
+    playing = true;
+    step = 0;
+    nextT = ctx.currentTime + 0.06;
+    master.gain.cancelScheduledValues(ctx.currentTime);
+    master.gain.setValueAtTime(master.gain.value, ctx.currentTime);
+    master.gain.linearRampToValueAtTime(VOL, ctx.currentTime + 0.8);
+    schedule();
+    timer = setInterval(schedule, 25);
+  }
+  function stopLoop() {
+    if (!playing) return;
+    playing = false;
+    clearInterval(timer); timer = null;
+    if (ctx) {
+      master.gain.cancelScheduledValues(ctx.currentTime);
+      master.gain.setValueAtTime(master.gain.value, ctx.currentTime);
+      master.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.4);
+    }
+    sleepSoon();
+  }
+  // 소리가 다 줄어든 뒤 오디오를 재워 둠 (휴대폰 배터리). 다시 필요하면 update()/다음 터치에서 깨움
+  function sleepSoon() {
+    clearTimeout(idleT);
+    idleT = setTimeout(() => { if (!playing && ctx && ctx.state === 'running') ctx.suspend().catch(() => {}); }, 700);
+  }
+
+  function hidden() { try { return document.hidden; } catch (e) { return false; } }
+
+  function update() {
+    const want = on && holders.size > 0 && !hidden();
+    if (want && gestured && ensureCtx()) {
+      if (asleep()) { wake(); return; } // 깨어나면 onstatechange 로 다시 옴
+      if (ctx.state === 'running') startLoop();
+    } else {
+      stopLoop();
+      if (ctx && ctx.state === 'running' && !playing) sleepSoon();
+    }
+    if (!holders.size) hurry = false;
+  }
+
+  // 첫 터치·클릭·키 입력에서 오디오를 깨움 (브라우저 자동 재생 막기 때문)
+  function unlock() {
+    gestured = true;
+    // 터치 안에서 깨워야 iOS 가 허락함. 지금 틀 게 없으면 update() 가 곧 다시 재움
+    if (on && ensureCtx()) wake();
+    update();
+  }
+  if (typeof document !== 'undefined') {
+    for (const ev of ['pointerdown', 'touchend', 'keydown']) document.addEventListener(ev, unlock, { capture: true, passive: true });
+    document.addEventListener('visibilitychange', () => {
+      if (!ctx) return;
+      if (hidden()) { stopLoop(); ctx.suspend().catch(() => {}); } else update();
+    });
+  }
+
+  function refreshButtons() {
+    for (const b of [...buttons]) {
+      if (!b.isConnected) { buttons.delete(b); continue; }
+      paint(b);
+    }
+  }
+  function paint(b) {
+    b.textContent = on ? '🔊 음악 켜짐' : '🔇 음악 꺼짐';
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.classList.toggle('off', !on);
+  }
+
+  App.music = {
+    claim(id) { holders.add(id); update(); },
+    release(id) { if (holders.delete(id)) update(); },
+    hurry(v) { hurry = !!v && holders.size > 0; },
+    enabled: () => on,
+    playing: () => playing,
+    setEnabled(v) {
+      on = !!v;
+      try { App.store.set(KEY, on); } catch (e) { /* 무시 */ }
+      if (on) { gestured = true; if (ensureCtx()) wake(); }
+      update();
+      refreshButtons();
+    },
+    toggle() { App.music.setEnabled(!on); },
+    // 켜기/끄기 버튼 (여러 화면에 있어도 모두 같이 바뀜)
+    button(cls) {
+      const b = App.h('button', { class: 'music-btn' + (cls ? ' ' + cls : ''), type: 'button', title: '게임 중 배경 음악 켜기/끄기', onclick: () => App.music.toggle() });
+      paint(b);
+      for (const x of [...buttons]) if (!x.isConnected) buttons.delete(x); // 떠난 화면의 버튼은 잡아 두지 않음
+      buttons.add(b);
+      return b;
     },
   };
 })();
@@ -1398,14 +1718,31 @@ tr.me td { background: var(--accent-soft); }
         this._changed();
         return;
       }
+      if (Net.kind === 'fire' && App.fire) {
+        // 동시 접속자가 가득 차면 연결이 오류 없이 멈춰 있으므로, 잠깐만 기다리고 안내
+        const ok = await App.fire.ready(10000);
+        if (this.closed) return;
+        if (!ok) {
+          this.status = 'failed'; this.errKind = 'full';
+          this.error = App.fire.problemText();
+          this._changed();
+          return;
+        }
+      }
+      const p = Net.join(roomName(this.gameId, this.code));
       try {
-        this.room = await Net.join(roomName(this.gameId, this.code));
+        this.room = await (Net.kind === 'fire' && App.fire ? App.fire.wait(p, 15000) : p);
       } catch (e) {
+        // 늦게라도 열리면 바로 닫아 유령 참가자·리스너가 남지 않게
+        p.then((r) => { try { r.leave(); } catch (err) { /* 무시 */ } }, () => {});
+        if (this.closed) return;
         this.status = 'failed';
-        this.error = '방에 연결하지 못했어요. (' + (e && (e.code || e.message) || '알 수 없는 오류') + ')';
+        if (e && e.code === 'timeout' && App.fire) { this.errKind = 'full'; this.error = App.fire.problemText(); }
+        else this.error = '방에 연결하지 못했어요. (' + (e && (e.code || e.message) || '알 수 없는 오류') + ')';
         this._changed();
         return;
       }
+      if (this.closed) { try { this.room.leave(); } catch (e) { /* 무시 */ } return; }
       this.unsub = this.room.onPeers((ch) => this._onPeers(ch.peers || this.room.peers()), (err) => {
         this.status = 'failed';
         this.error = '연결이 끊겼어요. (' + err.code + ')';
@@ -1778,15 +2115,29 @@ tr.me td { background: var(--accent-soft); }
       let finishedFor = -1;
       const view = h('div', { class: 'mp' });
       root.append(view);
+      const tune = 'multi:' + cfg.gameId + ':' + Math.random().toString(36).slice(2, 8); // 배경 음악을 붙잡는 이름
+      const music = (play) => { if (App.music) { if (play) App.music.claim(tune); else { App.music.hurry(false); App.music.release(tune); } } };
+      let offSt = null; // 고르기 화면의 연결 상태 구독
+      const unsubStatus = () => { if (offSt) { offSt(); offSt = null; } };
+      // 게임 화면이 따로 만든 것(문제 묶음, 늦게 온 사람 화면 등)을 정리
+      function dispose(s) {
+        if (!s || s._disposed) return;
+        s._disposed = true;
+        if (s._lateStop) { try { s._lateStop(); } catch (e) { console.error(e); } s._lateStop = null; }
+        if (cfg.dispose) { try { cfg.dispose(s); } catch (e) { console.error(e); } }
+      }
 
       function leave() {
+        dispose(session);
         if (session) session.close();
         session = null;
         finishedFor = -1;
+        music(false);
         renderChooser();
       }
 
       function startSession(mode, code) {
+        unsubStatus();
         const nick = App.cleanNick(App.store.get('nick', ''));
         session = new Session({
           gameId: cfg.gameId, engine: cfg.engine, mode, nick, code,
@@ -1799,6 +2150,7 @@ tr.me td { background: var(--accent-soft); }
       }
 
       function renderChooser() {
+        unsubStatus();
         App.clear(view);
         const nickInput = h('input', { id: cfg.gameId + '-nick', class: 'input', maxlength: '12', placeholder: '닉네임', value: App.store.get('nick', '') });
         nickInput.addEventListener('input', () => App.store.set('nick', nickInput.value));
@@ -1835,7 +2187,15 @@ tr.me td { background: var(--accent-soft); }
           ),
         );
         Net.init().then((kind) => {
-          if (kind === 'fire') { btnHost.disabled = false; btnJoin.disabled = false; onlineNote.textContent = '방을 만들고 코드를 알려 주면, 이 페이지를 연 친구가 로그인 없이 들어올 수 있어요.'; }
+          if (kind === 'fire') {
+            btnHost.disabled = false; btnJoin.disabled = false;
+            const paint = (st) => {
+              const bad = st === 'full' || st === 'offline';
+              onlineNote.textContent = bad ? App.fire.problemText(st, { bots: !!cfg.engine.allowBots }) : '방을 만들고 코드를 알려 주면, 이 페이지를 연 친구가 로그인 없이 들어올 수 있어요.';
+              onlineNote.classList.toggle('warn-note', bad);
+            };
+            if (onlineNote.isConnected) { unsubStatus(); offSt = App.fire.onStatus(paint); }
+          }
           else if (kind === 'claude') { btnHost.disabled = false; btnJoin.disabled = false; onlineNote.textContent = '온라인 방에 연결할 수 있어요. 친구는 공유 메뉴에서 이메일로 초대받은 Claude 계정으로 로그인해서 이 페이지를 열어야 같은 방 코드로 들어올 수 있어요.'; }
           else if (kind === 'blocked') { onlineNote.textContent = App.ONLINE_BLOCKED; onlineNote.classList.add('warn-note'); }
           else if (kind === 'local') { btnHost.disabled = false; btnJoin.disabled = false; onlineNote.textContent = '지금은 이 브라우저 안의 다른 탭끼리만 연결돼요. 공유된 페이지에서 열면 친구와 연결됩니다.'; }
@@ -1884,13 +2244,31 @@ tr.me td { background: var(--accent-soft); }
 
       function render(s) {
         if (s !== session) return;
+        music(!!(s.W && s.W.ph === 'play' && s.status !== 'failed' && s.status !== 'hostleft'));
         App.clear(view);
         if (s.status === 'connecting') { view.append(h('div', { class: 'center-msg' }, '방에 연결하는 중…')); return; }
         if (s.status === 'nohost' && cfg.lateJoin) {
           const box = h('div', { class: 'center-msg' }, h('p', null, '방을 찾는 중…'));
           view.append(box);
           if (!s._late) s._late = cfg.lateJoin(s.code);
-          s._late.then((el) => { if (session !== s || !box.isConnected) return; App.clear(box); if (el) box.replaceWith(el(leave)); else box.append(h('p', null, s.error), h('button', { class: 'btn', onclick: leave }, '처음으로')); });
+          s._late.then((el) => {
+            if (session !== s || !box.isConnected) return;
+            App.clear(box);
+            if (el) { const node = el(leave); s._lateStop = node._stop || null; box.replaceWith(node); }
+            else box.append(h('p', null, s.error), h('button', { class: 'btn', onclick: leave }, '처음으로'));
+          });
+          return;
+        }
+        if (s.status === 'failed' || s.status === 'hostleft' || (s.status === 'nohost' && !cfg.lateJoin)) dispose(s);
+        if (s.status === 'failed' && s.errKind === 'full') {
+          const again = () => { const m = s.mode, c = s.mode === 'host' ? newCode() : s.code; leave(); startSession(m, c); };
+          const local = () => { leave(); startSession('local'); };
+          view.append(h('div', { class: 'center-msg full-msg' },
+            h('p', { class: 'note warn-note' }, App.fire ? App.fire.problemText(null, { bots: !!cfg.engine.allowBots }) : s.error),
+            h('div', { class: 'row wrap center' },
+              cfg.engine.allowBots ? h('button', { class: 'btn primary', onclick: local }, cfg.soloLabel || '컴퓨터와 하기') : null,
+              h('button', { class: 'btn', onclick: again }, '다시 시도'),
+              h('button', { class: 'btn ghost', onclick: leave }, '처음으로'))));
           return;
         }
         if (s.status === 'failed' || s.status === 'nohost' || s.status === 'hostleft') {
@@ -1965,10 +2343,17 @@ tr.me td { background: var(--accent-soft); }
           const r = session.remaining(+el.dataset.timerSeat);
           el.textContent = r == null ? '' : App.leftText(r);
         });
+        if (App.music) {
+          // 내 차례 제한 시간(또는 data-hurry 표시가 붙은 단계 시간)이 15초 안쪽이면 빨라지게
+          const me = session.mySeat;
+          let left = me >= 0 ? session.remaining(me) : null;
+          view.querySelectorAll('[data-hurry][data-until]').forEach((el) => { const r = +el.dataset.until - Date.now(); if (left == null || r < left) left = r; });
+          App.music.hurry(left != null && left > 0 && left < 15000);
+        }
       }, 300);
 
       renderChooser();
-      return () => { clearInterval(clock); if (session) session.close(); };
+      return () => { clearInterval(clock); unsubStatus(); music(false); dispose(session); if (session) session.close(); };
     },
   };
 })();
@@ -2186,16 +2571,19 @@ tr.me td { background: var(--accent-soft); }
 
   // ---------- 문제 묶음 풀기 (혼자 연습·오늘의 문제·기록 대결 공용) ----------
   // cfg: { seeds, opts, toolbar(): el|null, label, onEnd(results) }
+  let tuneNo = 0;
   function problemSet(wrap, ctx, def, cfg) {
     const seeds = cfg.seeds, N = seeds.length, opts = cfg.opts;
     let round = 0, cur = null, dead = false;
     const results = [];
+    const tune = 'set:' + def.id + ':' + (++tuneNo); // 배경 음악: 문제를 푸는 동안
+    const music = (play) => { if (App.music) { if (play) App.music.claim(tune); else App.music.release(tune); } };
 
     function next() {
       if (dead) return;
       if (cur && cur.comp && cur.comp.destroy) cur.comp.destroy();
       round++;
-      if (round > N) { cur = null; stop(); cfg.onEnd(results.slice()); return; }
+      if (round > N) { cur = null; stop(); music(false); cfg.onEnd(results.slice()); return; }
       const pz = puzzleOf(def, seeds[round - 1], opts);
       App.quick.lastPuzzle = pz; // 점검용
       cur = { pz, t0: Date.now(), wrong: 0, lockUntil: 0, done: false, ok: false };
@@ -2269,9 +2657,10 @@ tr.me td { background: var(--accent-soft); }
       if (el && cur && !cur.done) el.textContent = App.fmtTime(Date.now() - cur.t0);
     }, 500);
     function stop() { clearInterval(clock); }
+    music(true);
     next();
     return {
-      destroy() { dead = true; stop(); if (cur && cur.comp && cur.comp.destroy) cur.comp.destroy(); },
+      destroy() { dead = true; stop(); music(false); if (cur && cur.comp && cur.comp.destroy) cur.comp.destroy(); },
     };
   }
 
@@ -2325,6 +2714,12 @@ tr.me td { background: var(--accent-soft); }
   // ---------- 기록·순위 공용 도구 ----------
   const SHARE_URL = App.SHARE_URL || 'https://claude.ai/artifact/7PS8wBkQySgG8HmrkLpRRG';
   const hasServer = () => !!(App.fire && App.fire.enabled && App.fire.enabled());
+  // 서버에 붙을 수 있으면 요청, 아니면 {code:'full'} 로 실패 (가득 찬 동안 요청이 끝없이 멈춰 있는 것을 막음)
+  async function serverCall(fn, ms) {
+    if (!(await App.fire.ready(9000))) throw { code: 'full' };
+    return App.fire.wait(fn(), ms || 10000);
+  }
+  const downNote = (e) => (e && (e.code === 'full' || e.code === 'timeout') ? App.fire.problemText() : '서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.');
   const myNick = () => App.cleanNick(App.store.get('nick', ''));
   const pad2 = (x) => String(x).padStart(2, '0');
   function optLabel(def, opts) {
@@ -2389,8 +2784,18 @@ tr.me td { background: var(--accent-soft); }
   // 서버에 모인 기록으로 순위 상자 (N명 중 N위, 상위 %, 평균 시간)
   function rankBox(key, n, o) {
     const box = h('section', { class: 'rank-box', 'aria-live': 'polite' }, h('p', { class: 'note center-text' }, '순위를 불러오는 중…'));
+    let offOk = null, started = false;
+    const stopWatch = () => { if (offOk) { offOk(); offOk = null; } };
+    function retry() { stopWatch(); App.clear(box); box.append(h('p', { class: 'note center-text' }, '순위를 불러오는 중…')); load(); }
     function load() {
-      App.fire.results(key).then((rows) => {
+      started = true;
+      serverCall(async () => {
+        let rows = await App.fire.results(key);
+        // 서버가 가득 찼을 때 끝낸 기록은 이 기기에만 있음 → 연결되면 그때 올림
+        const local = o.localKey ? App.store.get(o.localKey, null) : null;
+        if (local && local.r && !rows.some((x) => x.me) && (await App.fire.saveResult(key, myNick(), local.r))) rows = await App.fire.results(key);
+        return rows;
+      }, 15000).then((rows) => {
         App.clear(box);
         const all = rankRows(rows, n);
         const me = all.find((r) => r.me);
@@ -2409,9 +2814,21 @@ tr.me td { background: var(--accent-soft); }
             h('tbody', null, top.map((r) => h('tr', { class: r.me ? 'me' : '' }, h('td', null, r.rank), h('td', null, r.name, r.me ? ' (나)' : ''), h('td', null, r.s.solved + '/' + n), h('td', { class: 'mono' }, App.fmtTime(r.s.total)))))) : null,
           h('div', { class: 'row center' }, h('button', { class: 'btn tiny ghost', onclick: () => { App.clear(box); box.append(h('p', { class: 'note center-text' }, '순위를 불러오는 중…')); load(); } }, '↻ 순위 새로고침')),
           me && o.share ? shareBlock('결과 공유하기', o.share(me, N)) : null);
-      }).catch(() => {
+      }).catch((e) => {
+        if (!box.isConnected && started) return;
         App.clear(box);
-        box.append(h('p', { class: 'note center-text' }, '순위를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'), h('div', { class: 'row center' }, h('button', { class: 'btn tiny', onclick: load }, '다시 시도')));
+        const mine = o.localKey && App.store.get(o.localKey, null);
+        const m = mine && mine.r ? summarize(decodeEntries(mine.r, n) || []) : null;
+        box.append(
+          m ? h('div', { class: 'result-box ok' }, h('p', { class: 'note' }, o.title), h('strong', { class: 'result-big' }, m.solved + ' / ' + n + ' 정답 · ' + fmtLong(m.total))) : null,
+          h('p', { class: 'note warn-note' }, downNote(e)),
+          m ? h('p', { class: 'note center-text' }, '내 기록은 이 기기에 저장해 두었어요. 이 화면을 열어 둔 채 서버에 연결되면 순위에 자동으로 올라가요.') : null,
+          h('div', { class: 'row center' }, h('button', { class: 'btn tiny', onclick: retry }, '다시 시도')));
+        // 서버에 다시 연결되면 저절로 다시 불러오고(이 기기 기록도 올림)
+        if (!offOk) offOk = App.fire.onStatus((st) => {
+          if (!box.isConnected) { stopWatch(); return; }
+          if (st === 'ok') { stopWatch(); retry(); }
+        });
       });
     }
     load();
@@ -2436,12 +2853,12 @@ tr.me td { background: var(--accent-soft); }
         nickField(def.id + '-set-nick'),
         h('div', { class: 'row center wrap' }, h('button', { class: 'btn primary big', onclick: () => { play(false); top(); } }, '시작하기'), leaveBtn));
       if (hasServer()) {
-        App.fire.results(cfg.key).then((rows) => {
+        serverCall(() => App.fire.results(cfg.key)).then((rows) => {
           const all = rankRows(rows, cfg.n);
           if (all.some((r) => r.me)) { App.store.set(cfg.localKey, { at: Date.now() }); if (stats.isConnected) result(); return; }
           const avg = all.length ? all.reduce((a, r) => a + r.s.total, 0) / all.length : 0;
           stats.textContent = all.length ? '지금까지 ' + all.length + '명 참가 · 평균 ' + fmtLong(avg) : '아직 아무도 안 풀었어요. 첫 번째로 풀어 보세요!';
-        }).catch(() => { stats.textContent = ''; });
+        }).catch((e) => { stats.textContent = downNote(e) + ' 문제는 지금 풀 수 있고, 기록은 연결되면 올라가요.'; stats.classList.add('warn-note'); });
       }
     }
     function play(practice) {
@@ -2457,7 +2874,8 @@ tr.me td { background: var(--accent-soft); }
         const r = encodeEntries(results);
         App.store.set(cfg.localKey, { r, at: Date.now() });
         App.clear(box); put(h('p', { class: 'note center-text' }, '기록을 저장하는 중…'));
-        if (hasServer()) await App.fire.saveResult(cfg.key, myNick(), r);
+        if (hasServer()) { try { await serverCall(() => App.fire.saveResult(cfg.key, myNick(), r)); } catch (e) { /* 순위 상자에서 연결되면 다시 올림 */ } }
+        if (!box.isConnected) return;
         result(); top();
       } });
     }
@@ -2467,7 +2885,7 @@ tr.me td { background: var(--accent-soft); }
       const mine = local && local.r ? summarize(decodeEntries(local.r, cfg.n) || []) : null;
       put(
         note ? h('p', { class: 'note strong center-text' }, note) : null,
-        hasServer() ? rankBox(cfg.key, cfg.n, { title: cfg.title, share: cfg.share })
+        hasServer() ? rankBox(cfg.key, cfg.n, { title: cfg.title, share: cfg.share, localKey: cfg.localKey })
           : h('div', { class: 'result-box ok' }, h('p', { class: 'note' }, cfg.title), mine ? h('strong', { class: 'result-big' }, mine.solved + ' / ' + cfg.n + ' 정답 · ' + fmtLong(mine.total)) : null, h('p', { class: 'note' }, '전체 순위는 온라인에 연결된 사이트에서 볼 수 있어요.')),
         h('div', { class: 'row center wrap' }, h('button', { class: 'btn ghost', onclick: () => { play(true); top(); } }, '같은 문제 다시 풀기'), leaveBtn));
     }
@@ -2510,7 +2928,7 @@ tr.me td { background: var(--accent-soft); }
         const box = h('div', { class: 'chal' });
         const opts = Object.assign({}, def.defaultOpts, set.o);
         const when = set.at ? new Date(set.at) : null;
-        setFlow(box, ctx, def, {
+        box._stop = setFlow(box, ctx, def, {
           key: set.key, seeds: seedsFrom(set.seed, set.n), opts, n: set.n, localKey: 'rec.' + set.key,
           head: '📨 방 코드 ' + code + ' 기록 대결', sub: def.name + ' · ' + optLabel(def, opts) + ' · ' + set.n + '문제' + (when ? ' · ' + (when.getMonth() + 1) + '/' + when.getDate() + ' ' + pad2(when.getHours()) + ':' + pad2(when.getMinutes()) + ' 시작' : ''),
           lead: '방장은 이미 나갔지만, 같은 문제를 풀면 이 대결의 순위에 합쳐져요.',
@@ -2519,6 +2937,15 @@ tr.me td { background: var(--accent-soft); }
         });
         return box;
       };
+    }
+
+    // 기록 대결 화면이 만든 문제 묶음·카운트다운·늦게 푸는 화면 정리 (나가기, 다음 판, 화면 닫기)
+    function disposeRec(s) {
+      const L = s.local;
+      if (L.set && L.set.destroy) L.set.destroy();
+      L.set = null;
+      clearInterval(L.cd); L.cd = null;
+      if (L.lateStop) { L.lateStop(); L.lateStop = null; }
     }
 
     function progressPills(W, st, me) {
@@ -2534,9 +2961,8 @@ tr.me td { background: var(--accent-soft); }
       const W = s.W, st = W.s, me = s.mySeat, L = s.local;
       const gk = W.gn + ':rec';
       if (L.key !== gk) {
-        if (L.set && L.set.destroy) L.set.destroy();
-        clearInterval(L.cd);
-        Object.assign(L, { key: gk, set: null, fin: null, cd: null, seeds: seedsFrom(st.seed, st.n), wrap: h('div', { class: 'quick' }), setSaved: false, lateBox: null, allBox: null });
+        disposeRec(s);
+        Object.assign(L, { key: gk, set: null, fin: null, cd: null, seeds: seedsFrom(st.seed, st.n), wrap: h('div', { class: 'quick' }), setSaved: false, lateBox: null, lateStop: null, allBox: null });
       }
       // 방장: 나중에 같은 방 코드로 오는 사람을 위해 문제 묶음을 서버에 남김
       if (s.isHost && st.key && !L.setSaved && hasServer()) { L.setSaved = true; App.fire.putSet((def.id + '-' + s.code).toLowerCase(), st.key, { g: def.id, o: st.o, n: st.n, seed: st.seed }); }
@@ -2560,7 +2986,7 @@ tr.me td { background: var(--accent-soft); }
         if (!L.set) {
           L.set = 'starting';
           setTimeout(() => {
-            if (s.local !== L || L.key !== gk) return;
+            if (s.closed || s._disposed || s.local !== L || L.key !== gk || L.set !== 'starting') return;
             L.set = problemSet(L.wrap, ctx, def, { seeds: L.seeds, opts: st.o, label: '문제', lockMs: RACE_LOCK,
               onProgress: (round, results) => { const ok = results.filter((r) => r.ok).length; setTimeout(() => s.send({ t: 'prog', k: Math.min(round, st.n), s: ok }), 0); },
               onEnd: (results) => {
@@ -2603,7 +3029,7 @@ tr.me td { background: var(--accent-soft); }
       if (me < 0 && st.key && hasServer()) {
         if (!L.lateBox) {
           L.lateBox = h('div', { class: 'chal' });
-          setFlow(L.lateBox, ctx, def, { key: st.key, seeds: L.seeds, opts: st.o, n: st.n, localKey: 'rec.' + st.key,
+          L.lateStop = setFlow(L.lateBox, ctx, def, { key: st.key, seeds: L.seeds, opts: st.o, n: st.n, localKey: 'rec.' + st.key,
             head: '나도 같은 문제 풀기', sub: optLabel(def, st.o) + ' · ' + st.n + '문제', barLabel: '기록 대결 ' + s.code, title: '방 코드 ' + s.code + ' 기록 대결 · ' + def.name });
         }
         g.append(L.lateBox);
@@ -2678,6 +3104,7 @@ tr.me td { background: var(--accent-soft); }
       gameId: def.id,
       engine,
       soloLabel: '컴퓨터와 대결',
+      dispose(s) { disposeRec(s); if (s.local.comp && s.local.comp.destroy) s.local.comp.destroy(); },
       renderOptions(o, s, disabled) {
         const W = s.W, mode = W.o.mode === 'rec' ? 'rec' : 'fast';
         o.append(h('div', { class: 'toolbar' }, segRow('방식', 'mode', [['fast', '⚡ 빨리 맞히기'], ['rec', '⏱ 기록 대결']], W, s, disabled)),
@@ -2971,6 +3398,7 @@ tr.me td { background: var(--accent-soft); }
         App.store.set('signal.len', len); App.store.set('signal.pow', pow);
         ans = genEquation(len, pow);
         guesses = []; fbs = []; cur = ''; done = false; msg = ''; shake = false;
+        if (App.music) App.music.claim('signal-solo'); // 푸는 동안 배경 음악
         draw();
       }
       function onKey(k) {
@@ -2984,6 +3412,7 @@ tr.me td { background: var(--accent-soft); }
           guesses.push(cur); fbs.push(f); cur = ''; msg = '';
           if (f === 'g'.repeat(len)) { done = true; msg = guesses.length + '번 만에 맞혔어요!'; ctx.finished({}); }
           else if (guesses.length >= triesFor(len)) { done = true; msg = '아쉬워요. 정답은 ' + E.show(ans) + ' 였어요.'; ctx.finished({}); }
+          if (done && App.music) App.music.release('signal-solo');
         } else if (k === '^' && !pow) return;
         else if (cur.length < len) cur += k;
         draw();
@@ -3010,7 +3439,7 @@ tr.me td { background: var(--accent-soft); }
           done ? h('div', { class: 'row center' }, h('button', { class: 'btn primary', onclick: () => fresh() }, '다음 문제'), h('button', { class: 'btn', onclick: () => fresh(true) }, '랜덤 변형으로')) : keyboardEl(pow, keyStates(guesses, fbs), onKey));
       }
       fresh();
-      return () => { keyHandler = null; };
+      return () => { keyHandler = null; if (App.music) App.music.release('signal-solo'); };
     }
 
     // ----- 1:1 온라인 -----
@@ -4382,6 +4811,7 @@ tr.me td { background: var(--accent-soft); }
       App.magic.lastPuzzle = pz; // 점검용
       vals = pz.given.slice();
       t0 = Date.now(); solved = false; hints = 0; sel = null; armed = null;
+      if (App.music) App.music.claim('magic'); // 푸는 동안 배경 음악
       draw();
     }
 
@@ -4547,6 +4977,7 @@ tr.me td { background: var(--accent-soft); }
           wrap.querySelectorAll('input.mg-cell').forEach((x) => { x.readOnly = true; });
           sel = null; armed = null; paintPick();
           tray.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+          if (App.music) App.music.release('magic');
           ctx.finished({});
         } else {
           const bad = [];
@@ -4576,7 +5007,7 @@ tr.me td { background: var(--accent-soft); }
       if (el && !solved) el.textContent = App.fmtTime(Date.now() - t0);
     }, 500);
     fresh();
-    return () => clearInterval(timerId);
+    return () => { clearInterval(timerId); if (App.music) App.music.release('magic'); };
   }
 
   App.games.push({
@@ -5171,7 +5602,9 @@ tr.me td { background: var(--accent-soft); }
     const pk = rk + ':' + st.ph;
     if (L.pk !== pk) { L.pk = pk; L.bid = null; L.sel = null; }
     if (L.vk !== W.v) { L.vk = W.v; L.until = Date.now() + (st.rem || 0); }
-    const timer = (label) => h('span', { class: 'pill' }, label + ' ', h('b', { 'data-until': String(L.until) }, App.leftText(L.until - Date.now())));
+    // 나와 관계있는 단계 시간이면 data-hurry: 15초 안쪽에서 배경 음악이 빨라짐
+    const mine = me >= 0 && (st.ph === 'buzz' || (st.ph === 'under' && !st.done[me]) || (st.ph === 'try' && st.att && st.att.s === me));
+    const timer = (label) => h('span', { class: 'pill' }, label + ' ', h('b', { 'data-until': String(L.until), 'data-hurry': mine ? '1' : null }, App.leftText(L.until - Date.now())));
     const active = (i) => (st.ph === 'buzz') || (st.ph === 'under' && !st.done[i]) || (st.ph === 'try' && st.att.s === i);
 
     g.append(h('div', { class: 'wl-head' },
@@ -5287,11 +5720,12 @@ tr.me td { background: var(--accent-soft); }
 
     function newGame() {
       G = { B: C.makeBlocks(NB, PLAIN), T: C.randomTowers(NB), round: 0, score: 0, log: [], used: new Set(), sel: null, flip: false };
+      if (App.music) App.music.claim('tower-solo'); // 연습하는 동안 배경 음악
       nextRound();
     }
     function nextRound() {
       G.round++;
-      if (G.round > SOLO_ROUNDS) { G.phase = 'over'; draw(); return; }
+      if (G.round > SOLO_ROUNDS) { G.phase = 'over'; if (App.music) App.music.release('tower-solo'); draw(); return; }
       const want = G.round <= 2 ? 2 + (G.round - 1) : R.pick([3, 4]);
       let goal = C.pickGoal(G.B, G.T, want, G.used);
       if (!goal) { G.T = C.randomTowers(NB); goal = C.pickGoal(G.B, G.T, want, G.used); }
@@ -5363,7 +5797,7 @@ tr.me td { background: var(--accent-soft); }
         h('button', { class: 'btn primary', onclick: nextRound }, G.round >= SOLO_ROUNDS ? '최종 결과 보기' : '다음 라운드')));
     }
     newGame();
-    return () => {};
+    return () => { if (App.music) App.music.release('tower-solo'); };
   }
 
   function mount(root, ctx) {
@@ -6039,7 +6473,8 @@ tr.me td { background: var(--accent-soft); }
     let press = null, drag = null, boardEl = null;
     let canHover = false;
     try { canHover = matchMedia('(hover: hover) and (pointer: fine)').matches; } catch (e) { /* 무시 */ }
-    const LONG_MS = 350;
+    const LONG_MS = 150; // 가만히 누르고 있으면 이만큼 뒤 끌기 시작 (누른 채 움직이면 바로 시작)
+    const DRAG_PX = 10; // 손가락이 이만큼 넘게 움직이면 끌기 (흔들림은 탭)
     const el = h('div', { class: 'sym' });
 
     function occupancy(skip) {
@@ -6069,7 +6504,7 @@ tr.me td { background: var(--accent-soft); }
       const owner = occupancy(-1).get(key(x, y));
       if (owner != null) {
         sel = sel === owner ? null : owner;
-        msg = sel != null ? '판 위 조각을 골랐어요. ↻ 돌리기로 회전하거나, 빈칸을 눌러 옮기거나, 꾹 눌러 끌어서 옮길 수 있어요.' : '';
+        msg = sel != null ? '판 위 조각을 골랐어요. ↻ 돌리기로 회전하거나, 빈칸을 눌러 옮기거나, 누른 채 끌어서 옮길 수 있어요.' : '';
         draw();
         return;
       }
@@ -6112,34 +6547,45 @@ tr.me td { background: var(--accent-soft); }
     }
     function onDown(e) {
       if (solved || e.button > 0) return;
+      if (press || drag || e.isPrimary === false) return; // 두 번째 손가락은 무시
       const c = cellFromEvent(e);
       if (!c) return;
       const owner = occupancy(-1).get(key(c[0], c[1]));
-      press = { c, owner, sx: e.clientX, sy: e.clientY, moved: false, timer: null };
+      const pr = { c, owner, sx: e.clientX, sy: e.clientY, moved: false, timer: null, id: e.pointerId };
+      press = pr;
       try { boardEl.setPointerCapture(e.pointerId); } catch (err) { /* 무시 */ }
-      if (owner != null) {
-        press.timer = setTimeout(() => {
-          if (!press || press.moved) return;
-          const p = P[owner];
-          drag = { i: owner, off: [press.c[0] - p.pos[0], press.c[1] - p.pos[1]], target: p.pos.slice() };
-          sel = owner;
-          press = null;
-          msg = '끌어서 옮길 곳에 놓으세요.';
-          paint();
-          const st = el.querySelector('.status'); if (st) st.textContent = msg;
-          if (navigator.vibrate) { try { navigator.vibrate(12); } catch (err) { /* 무시 */ } }
-        }, LONG_MS);
-      }
+      if (owner != null) pr.timer = setTimeout(() => { if (press === pr && !pr.moved) startDrag(); }, LONG_MS);
+    }
+    // 판 위 조각 끌기 시작 (조금만 눌러 있거나, 누른 채 움직이면 바로)
+    function startDrag(e) {
+      const pr = press;
+      if (!pr || pr.owner == null) return;
+      press = null;
+      clearTimeout(pr.timer);
+      const p = P[pr.owner];
+      drag = { i: pr.owner, off: [pr.c[0] - p.pos[0], pr.c[1] - p.pos[1]], target: p.pos.slice(), from: p.pos.slice(), c: pr.c, prevSel: sel, id: pr.id };
+      sel = pr.owner;
+      if (e) { const c = cellFromEvent(e); if (c) drag.target = [c[0] - drag.off[0], c[1] - drag.off[1]]; }
+      msg = '끌어서 옮길 곳에 놓으세요.';
+      paint();
+      const st = el.querySelector('.status'); if (st) st.textContent = msg;
+      if (navigator.vibrate) { try { navigator.vibrate(10); } catch (err) { /* 무시 */ } }
     }
     function onMove(e) {
       if (drag) {
+        if (e.pointerId !== drag.id) return;
         const c = cellFromEvent(e);
         if (c) { drag.target = [c[0] - drag.off[0], c[1] - drag.off[1]]; paint(); }
         e.preventDefault();
         return;
       }
       if (press) {
-        if (Math.hypot(e.clientX - press.sx, e.clientY - press.sy) > 10) { press.moved = true; clearTimeout(press.timer); }
+        if (e.pointerId !== press.id) return;
+        if (Math.hypot(e.clientX - press.sx, e.clientY - press.sy) <= DRAG_PX) return;
+        if (press.owner != null) { startDrag(e); e.preventDefault(); return; }
+        // 빈칸을 누른 경우: 손가락이 다른 칸으로 넘어갔을 때만 누르기를 취소 (살짝 흔들린 건 그대로 탭)
+        const c = cellFromEvent(e);
+        if (!c || c[0] !== press.c[0] || c[1] !== press.c[1]) { press.moved = true; clearTimeout(press.timer); }
         return;
       }
       if (canHover && sel != null) {
@@ -6147,10 +6593,13 @@ tr.me td { background: var(--accent-soft); }
         if (!c || !hover || c[0] !== hover[0] || c[1] !== hover[1]) { hover = c; paint(); }
       }
     }
-    function onUp() {
+    function onUp(e) {
       if (drag) {
+        if (e && e.pointerId !== drag.id) return;
         const d = drag;
         drag = null;
+        // 다른 칸으로 옮기지 않았으면 그냥 누른 것(탭): 선택하거나 선택 풀기
+        if (d.target[0] === d.from[0] && d.target[1] === d.from[1]) { sel = d.prevSel; msg = ''; tap(d.c[0], d.c[1]); return; }
         const p = P[d.i];
         if (fitsAt(d.i, p.cells, d.target[0], d.target[1])) { p.pos = d.target; msg = ''; check(); }
         else msg = '그 자리에는 옮길 수 없어요. 다른 조각과 겹치거나 판 밖으로 나가요.';
@@ -6158,13 +6607,17 @@ tr.me td { background: var(--accent-soft); }
         return;
       }
       if (press) {
+        if (e && e.pointerId !== press.id) return;
         clearTimeout(press.timer);
         const pr = press;
         press = null;
         if (!pr.moved) tap(pr.c[0], pr.c[1]);
       }
     }
-    function onCancel() { if (press) clearTimeout(press.timer); press = null; if (drag) { drag = null; draw(); } }
+    function onCancel(e) {
+      if (press && (!e || e.pointerId === press.id)) { clearTimeout(press.timer); press = null; }
+      if (drag && (!e || e.pointerId === drag.id)) { drag = null; draw(); }
+    }
 
     function draw() {
       App.clear(el);
@@ -6197,8 +6650,8 @@ tr.me td { background: var(--accent-soft); }
         pz.flip ? h('button', { class: 'btn', disabled: sel == null || solved, onclick: () => turn(flip) }, '⇋ 뒤집기') : null,
         h('button', { class: 'btn ghost', disabled: !selPlaced || solved, onclick: () => { P[sel].pos = null; msg = ''; draw(); } }, '판에서 빼기'),
         h('button', { class: 'btn ghost', disabled: solved || P.every((p) => !p.pos), onclick: () => { P.forEach((p) => { p.pos = null; }); sel = null; msg = ''; draw(); } }, '모두 내리기'));
-      const hint = sel == null ? '아래 조각을 고르거나, 판 위 조각을 눌러 선택하세요. 판 위 조각을 꾹 누르면 끌어서 옮길 수 있어요.'
-        : selPlaced ? '선택한 조각: ↻ 돌리기로 회전, 빈칸을 누르면 그 자리로 이동, 꾹 눌러 끌어서 옮기기도 돼요.'
+      const hint = sel == null ? '아래 조각을 고르거나, 판 위 조각을 눌러 선택하세요. 판 위 조각은 누른 채 끌어서 옮길 수도 있어요.'
+        : selPlaced ? '선택한 조각: ↻ 돌리기로 회전, 빈칸을 누르면 그 자리로 이동, 누른 채 끌어서 옮기기도 돼요.'
           : '판의 빈칸을 누르면 조각의 맨 위 왼쪽 칸이 그 자리에 놓여요.';
       el.append(...[
         h('p', { class: 'hint' }, hint),
@@ -6274,7 +6727,7 @@ tr.me td { background: var(--accent-soft); }
 <li>조각은 돌릴 수 있습니다. 기본 규칙에서는 <b>뒤집을 수 없습니다</b>. “뒤집기 허용” 변형에서만 뒤집을 수 있어요.</li>
 <li>조각끼리 겹칠 수 없고, 모든 조각이 변으로 이어져 한 덩어리가 되어야 합니다.</li>
 <li>대칭축은 세로, 가로, 대각선 어느 방향이어도 됩니다. 안쪽에 구멍이 생겨도 대칭이면 괜찮습니다.</li>
-<li>조각을 고른 뒤 판의 칸을 누르면 놓입니다. 판 위 조각을 누르면 선택되어 「↻ 돌리기」로 돌리거나 빈 칸을 눌러 옮길 수 있고, 꾹 누른 채 끌어서 옮길 수도 있어요. 「판에서 빼기」로 다시 내려놓을 수 있습니다.</li>
+<li>조각을 고른 뒤 판의 칸을 누르면 놓입니다. 판 위 조각을 누르면 선택되어 「↻ 돌리기」로 돌리거나 빈 칸을 눌러 옮길 수 있고, 누른 채 끌어서 옮길 수도 있어요. 「판에서 빼기」로 다시 내려놓을 수 있습니다.</li>
 </ul>
 <h4>혼자 연습</h4>
 <p>5문제의 시간을 잽니다.</p>
@@ -8010,14 +8463,28 @@ tr.me td { background: var(--accent-soft); }
     // 동시 접속자 (Firebase 판에서만): 무료 요금제는 동시에 100명까지 연결돼요
     const onlineEl = h('p', { class: 'online-count', hidden: true, 'aria-live': 'polite' });
     if (App.fire && App.fire.enabled()) {
-      main._cleanup = App.fire.onCount((n) => {
-        if (n == null) { onlineEl.hidden = true; return; }
+      let lastN = null;
+      const paintOnline = () => {
+        const st = App.fire.status();
+        onlineEl.textContent = '';
+        onlineEl.classList.remove('full', 'down');
+        if (st === 'full' || st === 'offline') {
+          // 서버에 못 들어가도 혼자 연습과 컴퓨터와 대결은 된다는 것을 알려 줌
+          onlineEl.hidden = false;
+          onlineEl.classList.add('down');
+          onlineEl.append(h('span', { class: 'dot', 'aria-hidden': 'true' }), App.fire.problemText(st), ' ',
+            h('button', { class: 'btn tiny ghost', type: 'button', onclick: () => location.reload() }, '다시 연결'));
+          return;
+        }
+        if (st !== 'ok' || lastN == null) { onlineEl.hidden = true; return; }
         const lim = App.fire.limit;
         onlineEl.hidden = false;
-        onlineEl.classList.toggle('full', n >= lim * 0.9);
-        onlineEl.textContent = '';
-        onlineEl.append(h('span', { class: 'dot', 'aria-hidden': 'true' }), '동시 접속자 ', h('b', null, String(n)), ' / ' + lim, n >= lim * 0.9 ? ' · 곧 가득 차요' : '');
-      });
+        onlineEl.classList.toggle('full', lastN >= lim * 0.9);
+        onlineEl.append(h('span', { class: 'dot', 'aria-hidden': 'true' }), '동시 접속자 ', h('b', null, String(lastN)), ' / ' + lim, lastN >= lim * 0.9 ? ' · 곧 가득 차요' : '');
+      };
+      const offCount = App.fire.onCount((n) => { lastN = n; paintOnline(); });
+      const offStatus = App.fire.onStatus(() => paintOnline());
+      main._cleanup = () => { offCount(); offStatus(); };
     }
     const hero = h('section', { class: 'hero' },
       h('h1', { class: 'title sr-only' }, '두뇌 서바이벌에 내가 참가한다면?'),
@@ -8098,7 +8565,7 @@ tr.me td { background: var(--accent-soft); }
     }
     main.append(
       h('div', { class: 'ghead' },
-        h('a', { class: 'back', href: '#' }, '← 게임 목록'),
+        h('div', { class: 'ghead-row' }, h('a', { class: 'back', href: '#' }, '← 게임 목록'), App.music ? App.music.button() : null),
         h('div', { class: 'gtitle' }, h('span', { class: 'kicker' }, g.kicker + ' · ' + g.players), h('h1', null, g.name))),
       tablist, panels.play, panels.rules, panels.guide);
     const ctx = {

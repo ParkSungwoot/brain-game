@@ -736,3 +736,8 @@ tr.me td { background: var(--accent-soft); }
 .online-count.full { border-color: var(--accent); }
 .online-count.full .dot { background: var(--accent); }
 @media (prefers-reduced-motion: reduce) { .online-count .dot { animation: none; } }
+
+/* ---------- 만든 사람 ---------- */
+.foot .by { text-align: center; margin: 0 0 14px; }
+.by-link { display: inline-block; padding: 8px 12px; font-family: var(--font-mono); font-size: 15px; color: var(--accent); text-decoration: none; }
+.by-link:hover, .by-link:focus-visible { text-decoration: underline; text-underline-offset: 4px; }

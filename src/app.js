@@ -123,7 +123,8 @@
     for (const g of App.games) if (!order.includes(g.id)) order.push(g.id);
     main.append(h('section', { class: 'games', 'aria-label': '게임 목록' }, order.map((id) => card(App.games.find((x) => x.id === id)))));
     main.append(h('footer', { class: 'foot' },
-      h('p', null, '‘데블스 플랜’은 넷플릭스 프로그램이며, 이 사이트는 공식 서비스가 아닌 팬이 만든 연습장입니다. 게임 이름과 화면은 이 사이트에서 새로 만든 것이며, 일부 세부 규칙은 공개된 설명을 바탕으로 재구성했습니다. 기록과 공략 잠금 해제 정보는 이 브라우저에만 저장됩니다.'),
+      h('p', { class: 'by' }, h('a', { class: 'by-link', href: 'https://www.instagram.com/parksungwoo_t', target: '_blank', rel: 'noopener' }, 'by @parksungwoo_t')),
+      h('p', null, '‘데블스 플랜’은 넷플릭스 프로그램이며, 이 사이트는 공식 서비스가 아닌 팬이 만든 연습장입니다. 게임 이름과 화면은 이 사이트에서 새로 만든 것이며, 일부 세부 규칙은 공개된 설명을 바탕으로 재구성했습니다. ' + (App.fire && App.fire.enabled() ? '공략 잠금 해제 정보는 이 브라우저에만 저장되고, 오늘의 문제·기록 대결 기록은 닉네임과 함께 순위 서버에 저장됩니다.' : '기록과 공략 잠금 해제 정보는 이 브라우저에만 저장됩니다.')),
       h('p', null, '픽셀 글꼴: 갈무리(Galmuri) © Lee Minseo · ', h('a', { href: 'https://openfontlicense.org', target: '_blank', rel: 'noopener' }, 'SIL Open Font License 1.1'))));
     return main;
   }

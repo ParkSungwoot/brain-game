@@ -92,7 +92,9 @@
     }
     const hero = h('section', { class: 'hero' },
       h('h1', { class: 'title sr-only' }, '두뇌 서바이벌에 내가 참가한다면?'),
-      h('p', { class: 'eyebrow' }, '두뇌 서바이벌 게임 ' + (['', '한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열', '열한', '열두', '열세', '열네', '열다섯'][App.games.length] || App.games.length) + ' 가지'),
+      h('div', { class: 'eyebrow-row' },
+        h('p', { class: 'eyebrow' }, '두뇌 서바이벌 게임 ' + (['', '한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열', '열한', '열두', '열세', '열네', '열다섯'][App.games.length] || App.games.length) + ' 가지'),
+        h('a', { class: 'by-link by-top', href: 'https://www.instagram.com/parksungwoo_t', target: '_blank', rel: 'noopener' }, 'by @parksungwoo_t')),
       onlineEl,
       h('p', { class: 'lede' }, '서바이벌 예능에서 본 두뇌 게임의 규칙을 바탕으로 만든 웹 버전입니다. 퍼즐은 매번 새 문제가 만들어지고, 여러 명이 하는 게임은 방 코드로 친구와 동시에 접속해 즐길 수 있어요.'),
       h('ul', { class: 'how' },

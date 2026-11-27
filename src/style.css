@@ -741,3 +741,7 @@ tr.me td { background: var(--accent-soft); }
 .foot .by { text-align: center; margin: 0 0 14px; }
 .by-link { display: inline-block; padding: 8px 12px; font-family: var(--font-mono); font-size: 15px; color: var(--accent); text-decoration: none; }
 .by-link:hover, .by-link:focus-visible { text-decoration: underline; text-underline-offset: 4px; }
+.eyebrow-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.eyebrow-row .eyebrow { margin: 0; }
+.by-link.by-top { padding: 4px 2px; font-size: 13px; color: var(--muted); }
+.by-link.by-top:hover, .by-link.by-top:focus-visible { color: var(--accent); }

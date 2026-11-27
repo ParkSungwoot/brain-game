@@ -234,11 +234,12 @@
       if (def.check(cur.pz, v)) finish(true);
       else {
         cur.wrong++;
-        cur.lockUntil = Date.now() + SOLO_LOCK;
-        cur.msg = v + '개는 아니에요. 5초 뒤에 다시 답할 수 있어요.';
+        const lockMs = cfg.lockMs || SOLO_LOCK;
+        cur.lockUntil = Date.now() + lockMs;
+        cur.msg = v + '개는 아니에요. ' + Math.round(lockMs / 1000) + '초 뒤에 다시 답할 수 있어요.';
         draw();
         const me = cur;
-        setTimeout(() => { if (!dead && cur === me && !me.done) { me.msg = '다시 답해 보세요.'; draw(); } }, SOLO_LOCK + 50);
+        setTimeout(() => { if (!dead && cur === me && !me.done) { me.msg = '다시 답해 보세요.'; draw(); } }, lockMs + 50);
       }
     }
 
@@ -474,7 +475,7 @@
         h('div', { class: 'mp-bar' }, h('span', { class: 'bar-label' }, practice ? '다시 풀기 (순위에 안 들어가요)' : cfg.barLabel), h('span', { class: 'spacer' }),
           h('button', { class: 'btn tiny ghost', onclick: () => (practice ? result() : intro()) }, '그만두기')),
         body);
-      ps = problemSet(body, ctx, def, { seeds: cfg.seeds, opts: cfg.opts, label: '문제', onEnd: async (results) => {
+      ps = problemSet(body, ctx, def, { seeds: cfg.seeds, opts: cfg.opts, label: '문제', lockMs: practice ? SOLO_LOCK : RACE_LOCK, onEnd: async (results) => {
         ps = null;
         if (practice) { const m = summarize(results); result('다시 푼 기록: ' + m.solved + '/' + cfg.n + ' 정답 · ' + fmtLong(m.total) + ' (순위에는 처음 기록만 들어가요)'); top(); return; }
         const r = encodeEntries(results);
@@ -584,7 +585,7 @@
           L.set = 'starting';
           setTimeout(() => {
             if (s.local !== L || L.key !== gk) return;
-            L.set = problemSet(L.wrap, ctx, def, { seeds: L.seeds, opts: st.o, label: '문제',
+            L.set = problemSet(L.wrap, ctx, def, { seeds: L.seeds, opts: st.o, label: '문제', lockMs: RACE_LOCK,
               onProgress: (round, results) => { const ok = results.filter((r) => r.ok).length; setTimeout(() => s.send({ t: 'prog', k: Math.min(round, st.n), s: ok }), 0); },
               onEnd: (results) => {
                 L.set = null; L.fin = results;

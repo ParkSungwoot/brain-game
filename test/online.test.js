@@ -74,16 +74,10 @@ const URL = 'http://localhost:8765/';
   await A.waitForFunction(() => document.querySelectorAll('.seats .seat:not(.empty)').length === 2, null, { timeout: 8000 });
   await A.click('button:has-text("게임 시작")');
   await B.waitForSelector('.wl-board');
-  await A.click('.wl-cell >> nth=24'); await B.waitForTimeout(500);
-  await B.click('.wl-cell >> nth=0'); await B.waitForTimeout(500);
-  await B.click('.wl-cell >> nth=48'); await B.waitForTimeout(500);
-  await A.click('.wl-cell >> nth=6'); await A.waitForTimeout(600);
+  // 선 플레이어는 무작위: 차례인 쪽이 빈 칸에 사각 말을 놓음
+  for (const k of [24, 10, 38, 22]) { const who = /^내 차례/.test(await A.textContent('.wl-msg')) ? A : B; await who.click('.wl-cell >> nth=' + k); await who.waitForTimeout(500); }
   console.log('A msg:', await A.textContent('.wl-msg'), '| B msg:', await B.textContent('.wl-msg'));
-  // A: select piece at (1,1) idx 8, move to (1,2)=9, wall
-  await A.click('.wl-cell >> nth=8'); await A.click('.wl-cell >> nth=9');
-  await A.click('.wl-cell >> nth=9 >> .wall-pick.wp-D');
-  await B.waitForTimeout(800);
-  console.log('B msg after A move:', await B.textContent('.wl-msg'), 'walls on B:', await B.$$eval('.w-h, .w-v', e => e.length));
+  console.log('B msg after placement:', await B.textContent('.wl-msg'), 'pieces on B:', await B.$$eval('.wl-board .piece', e => e.length));
   await B.screenshot({ path: SHOTS + 'online-wall-guest.png' });
   await browser.close(); srv.close();
 })();

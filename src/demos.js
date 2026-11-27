@@ -228,16 +228,15 @@
   D.wall = (root) => {
     const N = 5;
     const seq = [
-      { red: [1, 1], walls: [], cap: '빨강 말로 왼쪽 위 3×3을 차지해 볼게요. (상대 차례는 생략)' },
-      { red: [0, 2], walls: [['v', 0, 2]], cap: '2칸 움직인 뒤, 말이 선 칸의 오른쪽 면에 담장.' },
-      { red: [1, 2], walls: [['v', 1, 2]], cap: '한 칸 내려와 또 오른쪽 면에 담장.' },
-      { red: [2, 2], walls: [['v', 2, 2]], cap: '경계를 따라 내려가며 한 줄씩 막아요.' },
-      { red: [2, 2], walls: [['h', 2, 2]], cap: '제자리에 머물며 담장만 세우는 것도 한 수예요.' },
+      { red: [0, 2], walls: [], cap: '빨강 ■ 사각 말로 왼쪽 위 3×3을 막아 볼게요. (상대 차례는 생략)' },
+      { red: [1, 2], walls: [['v', 1, 2]], cap: '한 칸 내려가 오른쪽 면에 벽.' },
+      { red: [0, 2], walls: [['v', 0, 2]], cap: '다시 올라가 오른쪽 면에 벽. 매번 꼭 움직여야 하니 오가며 쌓아요.' },
+      { red: [2, 2], walls: [['v', 2, 2]], cap: '사각 말은 곧게 두 칸! 단숨에 내려가 오른쪽 면도 막아요.' },
       { red: [2, 1], walls: [['h', 2, 1]], cap: '아래쪽 경계도 차례로…' },
-      { red: [2, 0], walls: [['h', 2, 0]], cap: '마지막 틈까지 닫으면…' },
-      { red: [2, 0], walls: [], terr: true, cap: '닫힌 구역에 내 말만 있으면 그 칸 수가 내 점수: 9칸 확보!', ms: 3600 },
+      { red: [2, 2], walls: [['h', 2, 2]], cap: '한 칸씩 오가며 아래 면을 막고…' },
+      { red: [2, 0], walls: [['h', 2, 0]], cap: '곧게 두 칸 가서 마지막 틈까지 닫으면…' },
+      { red: [2, 0], walls: [], terr: true, cap: '닫힌 영역에 내 말만 있으면 그 칸 수가 내 점수: 9칸 확보!', ms: 3600 },
     ];
-    // 담장 누적
     let acc = [];
     const steps = seq.map((s) => { acc = acc.concat(s.walls); return Object.assign({}, s, { all: acc.slice(), last: s.walls[0] }); });
     player(root, '상대가 오기 전에 경계를 닫기', steps, (stage, s) => {
@@ -246,10 +245,10 @@
       const vw = new Set(s.all.filter((w) => w[0] === 'v').map((w) => w[1] * N + w[2]));
       for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
         const k = r * N + c;
-        const red = s.red[0] === r && s.red[1] === c, blue = r === 3 && c === 3;
+        const red = s.red[0] === r && s.red[1] === c, blueC = r === 3 && c === 3, blueS = r === 4 && c === 1;
         const cls = 'wl-cell' + (s.terr && r < 3 && c < 3 ? ' terr0' : '');
         b.append(h('div', { class: cls },
-          red ? h('span', { class: 'piece', style: { background: 'var(--p0)' } }) : blue ? h('span', { class: 'piece', style: { background: 'var(--p1)' } }) : null,
+          red ? h('span', { class: 'piece sq', style: { background: 'var(--p0)' } }) : blueC ? h('span', { class: 'piece ci', style: { background: 'var(--p1)' } }) : blueS ? h('span', { class: 'piece sq', style: { background: 'var(--p1)' } }) : null,
           hw.has(k) ? h('span', { class: 'w-h' + (s.last && s.last[0] === 'h' && s.last[1] * N + s.last[2] === k ? ' new' : '') }) : null,
           vw.has(k) ? h('span', { class: 'w-v' + (s.last && s.last[0] === 'v' && s.last[1] * N + s.last[2] === k ? ' new' : '') }) : null));
       }

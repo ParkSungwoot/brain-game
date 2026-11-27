@@ -254,25 +254,40 @@
   // ---------- 벽바둑 2 ----------
   add('rules-wall', (root) => {
     const N = 5;
-    const vWalls = (rows) => rows.map((r) => ['v', r, 2]);
+    // 말: [행, 열, 자리(0 빨강·1 파랑·2 초록), 종류(S 사각·C 원형)]
+    const P0 = [[1, 0, 0, 'S'], [3, 1, 0, 'C'], [0, 4, 1, 'S'], [2, 3, 1, 'C'], [4, 4, 2, 'S'], [4, 2, 2, 'C']];
+    const mv = (list, from, to) => list.map((p) => (p[0] === from[0] && p[1] === from[1] ? [to[0], to[1], p[2], p[3]] : p));
+    const P1 = mv(P0, [1, 0], [1, 2]);
+    const P2 = mv(P1, [3, 1], [2, 1]);
+    const P3 = mv(P2, [0, 4], [0, 2]);
+    const END = [[1, 0, 0, 'S'], [3, 1, 0, 'C'], [0, 3, 1, 'S'], [2, 4, 1, 'C'], [4, 4, 2, 'S'], [3, 2, 2, 'C']];
+    const endWalls = [0, 1, 2, 3, 4].map((r) => ['v', r, 1]).concat([2, 3, 4].map((c) => ['h', 2, c]));
+    const R2 = [[1, 1, 1, 'C'], [3, 3, 1, 'C'], [1, 3, 2, 'C'], [3, 1, 2, 'C'], [2, 2, 1, 'S'], [0, 2, 2, 'S']];
     const steps = [
-      { red: [[1, 1], [3, 0]], blue: [[1, 3], [3, 4]], walls: [], cap: '두 사람이 말을 움직이고 담장을 세워 땅을 나눠요. (실제 판은 7×7, 각자 말 4개)', ms: 3400 },
-      { red: [[1, 1], [3, 0]], blue: [[1, 3], [3, 4]], walls: [], path: [[1, 1], [0, 1], [0, 2]], cap: '내 차례: 말 하나를 0~2칸 상하좌우로 움직여요. 꺾어 가도 되지만 담장이나 말은 못 지나가요.', ms: 3600 },
-      { red: [[0, 2], [3, 0]], blue: [[1, 3], [3, 4]], walls: [['v', 0, 2]], cap: '움직인 뒤에는 그 말이 선 칸의 한 면에 꼭 담장을 세워요.' },
-      { red: [[1, 2], [3, 0]], blue: [[1, 3], [3, 4]], walls: vWalls([0, 1, 2]), cap: '번갈아 움직이며 담장을 세우다 보면…' },
-      { red: [[2, 2], [3, 0]], blue: [[1, 3], [3, 4]], walls: vWalls([0, 1, 2, 3, 4]), cap: '판이 구역으로 나뉘어요.' },
-      { red: [[2, 2], [3, 0]], blue: [[1, 3], [3, 4]], walls: vWalls([0, 1, 2, 3, 4]), terr: true, cap: '모든 구역에 한 사람의 말만 남으면 끝! 내 말만 있는 구역의 칸 수가 점수: 빨강 15 : 파랑 10', ms: 4000 },
+      { P: P0, W: [], cap: '1라운드(3인전): 각자 ■ 사각 말 1개와 ● 원형 말 1개를 받아 1→2→3→3→2→1 순서로 빈 칸에 놓아요. (실제 판은 7×7)', ms: 4000 },
+      { P: P0, W: [], path: [[1, 1], [1, 2]], sel: [1, 0], cap: '■ 사각 말: 상하좌우 한 방향으로 곧게 1~2칸.', ms: 3000 },
+      { P: P1, W: [['v', 1, 2]], cap: '움직인 뒤에는 그 말이 선 칸의 한 면에 벽을 꼭 세워요. 매 차례 반드시 움직여야 해요.', ms: 3400 },
+      { P: P1, W: [['v', 1, 2]], path: [[2, 1]], sel: [3, 1], cap: '● 원형 말: 1칸 간 뒤, 원하면 왼쪽·오른쪽으로 꺾어 1칸 더 갈 수 있어요. (곧게 2칸은 안 돼요)', ms: 3600 },
+      { P: P2, W: [['v', 1, 2], ['h', 1, 1], ['v', 0, 2]], path: [[0, 3], [0, 2]], sel: [0, 4], brk: [0, 2, 'R'], cap: '💥 벽 부수기: 1라운드에서 각자 딱 한 번, 가는 길을 막은 벽 하나를 부수고 지나갈 수 있어요.', ms: 4000 },
+      { P: P3, W: [['v', 1, 2], ['h', 1, 1], ['v', 0, 1]], cap: '파랑 사각 말이 벽을 부수고 들어왔어요. 그리고 다시 벽을 하나 세워요.', ms: 3000 },
+      { P: END, W: endWalls, terr: true, cap: '모두의 말이 벽으로 갈라지면 바로 끝! 내 말이 있는 영역의 칸 수가 점수: 빨강 10 · 파랑 9 · 초록 6 → 가장 넓은 빨강은 생존 확정!', ms: 4600 },
+      { P: R2, W: [], cap: '2라운드는 남은 둘의 1:1. 각자 사각 2 · 원형 2 (원형은 정해진 자리), 벽 부수기 없음. 지는 사람은 탈락!', ms: 4200 },
     ];
+    const terrOf = (r, c) => (c <= 1 ? 0 : r <= 2 ? 1 : 2);
     player(root, '벽바둑 2 규칙', steps, (stage, s) => {
       const b = h('div', { class: 'wl-board demo-wl', style: { '--n': N } });
-      const vw = new Set(s.walls.map((w) => w[1] * N + w[2]));
-      const isAt = (list, r, c) => list.some(([a, bb]) => a === r && bb === c);
+      const hw = new Set(s.W.filter((w) => w[0] === 'h').map((w) => w[1] * N + w[2]));
+      const vw = new Set(s.W.filter((w) => w[0] === 'v').map((w) => w[1] * N + w[2]));
       for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
-        const path = s.path && isAt(s.path, r, c);
-        const cls = 'wl-cell' + (s.terr ? (c < 3 ? ' terr0' : ' terr1') : '') + (path ? ' demo-path' : '');
+        const k = r * N + c;
+        const pc = s.P.find((p) => p[0] === r && p[1] === c);
+        const onPath = s.path && s.path.some(([a, bb]) => a === r && bb === c);
+        const cls = 'wl-cell' + (s.terr ? ' terr' + terrOf(r, c) : '') + (onPath ? ' demo-path' : '');
         b.append(h('div', { class: cls },
-          isAt(s.red, r, c) ? h('span', { class: 'piece', style: { background: 'var(--p0)' } }) : isAt(s.blue, r, c) ? h('span', { class: 'piece', style: { background: 'var(--p1)' } }) : null,
-          vw.has(r * N + c) ? h('span', { class: 'w-v' }) : null));
+          pc ? h('span', { class: 'piece ' + (pc[3] === 'S' ? 'sq' : 'ci') + (s.sel && s.sel[0] === r && s.sel[1] === c ? ' sel' : ''), style: { background: `var(--p${pc[2]})` } }) : null,
+          hw.has(k) ? h('span', { class: 'w-h' }) : null,
+          vw.has(k) ? h('span', { class: 'w-v' }) : null,
+          s.brk && s.brk[0] === r && s.brk[1] === c ? h('span', { class: 'w-brk w-brk-' + s.brk[2] }, '💥') : null));
       }
       stage.append(b);
     });

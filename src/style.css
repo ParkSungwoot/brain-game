@@ -778,3 +778,20 @@ tr.me td { background: var(--accent-soft); }
 .demo-towers.three { gap: 8px; }
 .demo-towers.three .tw-col.demo-tw { width: min(108px, 27vw); }
 .demo-towers.three .tw-read { font-size: 12px; }
+
+/* ---------- 벽바둑 2: 사각 말·원형 말, 벽 부수기, 3인전 ---------- */
+.piece.sq { clip-path: none; border-radius: 0; width: 56%; height: 56%; border: 2px solid #000; box-shadow: inset -3px -3px 0 rgba(0, 0, 0, .3); }
+.piece.ci { border-radius: 50%; }
+.wl-cell.terr2 { background: #1d3a22; }
+.wl-cell.reach-brk { background: color-mix(in srgb, var(--sig-r) 24%, transparent); }
+.wl-cell.reach-brk::after { background: var(--sig-r); }
+.w-brk { position: absolute; z-index: 4; font-size: 14px; line-height: 1; pointer-events: none; }
+.w-brk-U { top: -9px; left: 50%; transform: translateX(-50%); }
+.w-brk-D { bottom: -9px; left: 50%; transform: translateX(-50%); }
+.w-brk-L { left: -9px; top: 50%; transform: translateY(-50%); }
+.w-brk-R { right: -9px; top: 50%; transform: translateY(-50%); }
+.wl-round { text-align: center; font-weight: 700; color: var(--accent); margin: 0 0 8px; }
+.wl-player .chip-tag.used { opacity: .45; }
+.wl-player.done { border-style: dashed; opacity: .85; }
+.wl-rank { margin: 0; padding-left: 1.4em; text-align: left; display: grid; gap: 4px; }
+.wl-legend { text-align: center; margin-top: 8px; }

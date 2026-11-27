@@ -295,40 +295,40 @@
 
   // ---------- 카드 장기 ----------
   add('rules-jang', (root) => {
-    const ROWS = 6, COLS = 5;
-    const base = () => {
-      const m = {};
-      m['5,2'] = ['me', '궁']; m['0,2'] = ['foe', '궁'];
-      for (const c of [0, 1, 3, 4]) { m['4,' + c] = ['me', '졸']; m['1,' + c] = ['foe', '졸']; }
-      return m;
+    const NN = 5, CARDS = App.jang.CARDS;
+    const start = () => ({ '4,2': ['me', 'B'], '4,1': ['me', 'S'], '4,3': ['me', 'S'], '3,2': ['me', 'S'], '0,2': ['foe', 'B'], '0,1': ['foe', 'S'], '0,3': ['foe', 'S'], '1,2': ['foe', 'S'] });
+    const B0 = start();
+    const B1 = Object.assign(start(), { '1,2': ['me', 'S'] }); delete B1['3,2'];
+    const B2 = Object.assign({}, B1, { '1,1': ['foe', 'S'] }); delete B2['0,1'];
+    const B3 = { '0,2': ['me', 'B'], '2,1': ['foe', 'B'], '4,1': ['me', 'S'], '1,4': ['foe', 'S'] };
+    const pat = (id) => {
+      const set = new Set(CARDS[id].moves.map(([dr, dc]) => (2 + dr) * 5 + (2 + dc)));
+      return h('div', { class: 'jg-pat' }, Array.from({ length: 25 }, (_, i) => h('span', { class: i === 12 ? 'me' : set.has(i) ? 'mv' : '' })));
     };
-    const B0 = base();
-    const B1 = Object.assign(base(), { '2,1': ['me', '졸'] }); delete B1['4,1'];
-    const B2 = Object.assign({}, B1, { '2,1': ['foe', '졸'] }); delete B2['1,1'];
-    const B3 = { '5,2': ['me', '궁'], '0,1': ['foe', '궁'], '0,2': ['me', '졸'], '2,4': ['foe', '졸'] };
-    const cards = ['전진', '사선', '옆걸음', '돌진', '후퇴'];
+    const card = (id, cls) => h('div', { class: 'jg-card' + (cls ? ' ' + cls : '') }, h('b', null, CARDS[id].name), pat(id));
+    const back = () => h('div', { class: 'jg-card back' }, h('b', null, '?'));
     const steps = [
-      { B: B0, cap: '5×6 판에서 각자 궁 1개와 졸 4개로 시작해요. 궁은 색칠된 궁성 밖으로 못 나가요.', ms: 3400 },
-      { B: B0, cards: 'hidden', cap: '라운드마다 두 사람이 같은 이동 카드 5장을 받아, 쓸 순서를 몰래 정해요.', ms: 3400 },
-      { B: B0, cards: 'open', first: 'me', cap: '1번 카드를 동시에 공개! 나는 ‘돌진’, 상대는 ‘전진’. 이번 카드는 내가 선(먼저)이에요.', ms: 3400 },
-      { B: B1, cards: 'open', first: 'me', cap: '돌진: 앞으로 1~2칸. 내 졸이 두 칸 나아갔어요. (가운데 칸이 비어 있어야 해요)' },
-      { B: B2, cards: 'open', first: 'me', cap: '상대는 전진: 내 졸이 있는 칸으로 들어오면 그 말을 잡아요! 다음 카드는 상대가 선이에요.', ms: 3600 },
-      { B: B3, star: true, cap: '상대 궁을 잡거나, 내 졸이 상대 궁의 처음 자리(★)에 들어가면 바로 이겨요!', ms: 3600 },
-      { B: B0, cap: '6라운드가 끝날 때까지 승부가 안 나면 남은 말이 많은 쪽이 이겨요.', ms: 3200 },
+      { B: B0, cap: '5×5 판에서 각자 큰 말(大) 1개와 작은 말(小) 3개로 시작해요. ★은 큰 말의 시작 칸이에요.', ms: 3400 },
+      { B: B0, show: 'cards', cap: '행마 카드는 쥐·말·원숭이·코끼리·기린 5장. 그림의 점이 갈 수 있는 칸이에요.', ms: 4200 },
+      { B: B0, show: 'hidden', cap: '쓸 순서를 몰래 정해 뒤집어 놓아요. 첫 배치에 한해 후공은 4장만 놓아요.', ms: 3600 },
+      { B: B0, show: 'open', me: 4, foe: 0, cap: '두 사람이 첫 카드를 동시에 공개! 선공부터 번갈아 움직여요. (나: 기린, 상대: 쥐)', ms: 3600 },
+      { B: B1, show: 'open', me: 1, foe: 0, last: '1,2', cap: '기린으로 작은 말을 2칸 앞으로 → 상대 작은 말을 잡았어요! 쓴 다음엔 바로 다음 카드(말)를 공개해요.', ms: 4200 },
+      { B: B2, show: 'open', me: 1, foe: 2, last: '1,1', cap: '상대는 쥐로 1칸 → 내 작은 말을 잡았어요. 상대도 다음 카드(원숭이)를 공개.', ms: 3800 },
+      { B: B3, star: true, cap: '상대 큰 말을 잡거나, 내 큰 말이 상대 큰 말의 시작 칸(★)에 들어가면 그 라운드 승리!', ms: 3800 },
+      { B: B0, cap: '3라운드 중 2라운드를 먼저 이기면 최종 승리. 90초를 넘기면 상대가 내 카드로 내 말을 움직여요!', ms: 3800 },
     ];
     player(root, '카드 장기 규칙', steps, (stage, s) => {
       const cells = [];
-      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      for (let r = 0; r < NN; r++) for (let c = 0; c < NN; c++) {
         const pc = s.B[r + ',' + c];
-        const palace = c >= 1 && c <= 3 && (r <= 1 || r >= 4);
-        const star = r === 0 && c === 2;
-        cells.push(h('div', { class: 'dm-cell jg' + (palace ? ' jg-pal' : '') + (s.star && star ? ' hl' : '') },
-          pc ? h('span', { class: 'jg-piece demo-pc', style: { background: pc[0] === 'me' ? 'var(--p0)' : 'var(--p1)' } }, pc[1]) : star ? h('span', { class: 'demo-star' }, '★') : null));
+        const home = (r === 0 || r === 4) && c === 2;
+        cells.push(h('div', { class: 'dm-cell jg' + (s.last === r + ',' + c ? ' hl' : '') + (s.star && r === 0 && c === 2 ? ' hl' : '') },
+          pc ? h('span', { class: 'jg-piece demo-pc' + (pc[1] === 'B' ? ' king' : ''), style: { background: pc[0] === 'me' ? 'var(--p0)' : 'var(--p1)' } }, pc[1] === 'B' ? '大' : '小') : home ? h('span', { class: 'demo-star' }, '★') : null));
       }
-      const row = (name, first, c1) => h('div', { class: 'demo-cards' }, h('span', { class: 'demo-cname' }, name, first ? h('span', { class: 'chip-tag' }, '선') : null),
-        [0, 1, 2, 3, 4].map((k) => h('span', { class: 'demo-card' + (k === 0 && s.cards === 'open' ? ' open' : '') }, k === 0 && s.cards === 'open' ? c1 : '?')));
-      const parts = [grid(COLS, cells, 36)];
-      if (s.cards) parts.push(h('div', { class: 'demo-col' }, row('나', s.first === 'me', '돌진'), row('상대', s.first === 'foe', '전진'), h('span', { class: 'note' }, '이번 라운드 카드: ' + cards.join(' · '))));
+      const parts = [grid(NN, cells, 40)];
+      if (s.show === 'cards') parts.push(h('div', { class: 'jg-hand demo-hand' }, [0, 1, 2, 3, 4].map((id) => card(id))));
+      if (s.show === 'hidden') parts.push(h('div', { class: 'demo-col' }, h('div', { class: 'demo-cards' }, h('span', { class: 'demo-cname' }, '선'), [0, 1, 2, 3, 4].map(back)), h('div', { class: 'demo-cards' }, h('span', { class: 'demo-cname' }, '후공'), [0, 1, 2, 3].map(back))));
+      if (s.show === 'open') parts.push(h('div', { class: 'demo-col' }, h('div', { class: 'demo-cards' }, h('span', { class: 'demo-cname' }, '나'), card(s.me, 'cur'), back(), back()), h('div', { class: 'demo-cards' }, h('span', { class: 'demo-cname' }, '상대'), card(s.foe, 'cur'), back(), back())));
       stage.append(...parts);
     });
   });

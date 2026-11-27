@@ -795,3 +795,12 @@ tr.me td { background: var(--accent-soft); }
 .wl-player.done { border-style: dashed; opacity: .85; }
 .wl-rank { margin: 0; padding-left: 1.4em; text-align: left; display: grid; gap: 4px; }
 .wl-legend { text-align: center; margin-top: 8px; }
+.dm-cell.danger { background: color-mix(in srgb, var(--sig-r) 30%, var(--bg)); }
+.dm-cell.bad { outline: 3px solid var(--sig-r); outline-offset: -3px; }
+.dm-cell.good { outline: 3px solid var(--sig-g); outline-offset: -3px; }
+.demo-hand { justify-content: center; }
+.demo-box .jg-card { width: 50px; padding: 4px 2px; }
+.demo-box .jg-card.back { min-height: 60px; }
+.demo-box .jg-pat { grid-template-columns: repeat(5, 7px); grid-auto-rows: 7px; }
+.demo-box .demo-cards { flex-wrap: wrap; }
+.demo-box .demo-cname { width: 44px; }

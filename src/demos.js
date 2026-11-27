@@ -256,23 +256,34 @@
     });
   };
 
-  // ---------- 카드 장기: 먼저 움직이는 카드 ----------
+  // ---------- 카드 장기: 상대의 다음 카드는 보인다 ----------
   D.jang = (root) => {
+    const NN = 5, CARDS = App.jang.CARDS;
+    const base = { '3,2': ['me', 'B'], '4,1': ['me', 'S'], '4,3': ['me', 'S'], '0,2': ['foe', 'B'], '1,0': ['foe', 'S'], '0,4': ['foe', 'S'] };
+    // 상대 '코끼리'가 닿는 칸
+    const reach = new Set();
+    for (const k of Object.keys(base)) {
+      const [pr, pc] = k.split(',').map(Number);
+      if (base[k][0] !== 'foe') continue;
+      for (const [dr, dc] of CARDS[3].moves) { const r = pr + dr, c = pc + dc; if (r >= 0 && r < NN && c >= 0 && c < NN) reach.add(r + ',' + c); }
+    }
+    const moved = (to) => { const b = Object.assign({}, base); delete b['3,2']; b[to] = ['me', 'B']; return b; };
     const steps = [
-      { me: [2, 1], foe: [1, 2], rev: false, cap: '두 사람 모두 같은 카드 5장을 몰래 순서대로 놓았어요. 내 졸(빨강) 대각선 앞에 상대 졸(파랑)이 있어요.', ms: 3600 },
-      { me: [2, 1], foe: [1, 2], rev: true, cap: '1번 카드 공개! 나는 “사선”, 상대는 “후퇴”. 이번 카드는 내가 먼저(선)예요.', ms: 3000 },
-      { me: [1, 2], foe: null, rev: true, cap: '사선으로 바로 잡기! 상대가 후퇴로 피하기 전에 먼저 움직였기 때문이에요.', ms: 3000 },
-      { me: [2, 1], foe: [0, 2], rev: true, alt: true, cap: '만약 상대가 먼저였다면? 후퇴로 도망쳐서 사선은 헛걸음이 돼요. 공격 카드는 내가 “선”인 순서에 두세요.', ms: 4200 },
+      { B: base, cap: '상대가 다음에 쓸 카드는 이미 공개돼 있어요: ‘코끼리’(대각선 1~2칸). 내 카드는 ‘원숭이’(둘레 8칸).', ms: 3800 },
+      { B: base, danger: true, cap: '빨간 칸은 상대가 코끼리로 닿는 칸이에요. 지금 내 큰 말이 있는 칸도 빨강! 이대로면 잡혀요.', ms: 4000 },
+      { B: moved('2,2'), danger: true, bad: '2,2', cap: '앞으로 한 칸(가운데)? 오른쪽 위 작은 말의 코끼리가 닿아요 ✗', ms: 3400 },
+      { B: moved('3,3'), danger: true, good: '3,3', cap: '대각선 오른쪽 아래로 피하면 빨간 칸이 아니라 안전 ✓. 움직이기 전에 상대 카드부터 보세요.', ms: 4200 },
     ];
-    player(root, '공격 카드는 내가 먼저인 순서에', steps, (stage, s) => {
+    const pat = (id) => { const set = new Set(CARDS[id].moves.map(([dr, dc]) => (2 + dr) * 5 + (2 + dc))); return h('div', { class: 'jg-pat' }, Array.from({ length: 25 }, (_, i) => h('span', { class: i === 12 ? 'me' : set.has(i) ? 'mv' : '' }))); };
+    const card = (id) => h('div', { class: 'jg-card cur' }, h('b', null, CARDS[id].name), pat(id));
+    player(root, '상대의 공개된 카드부터 보기', steps, (stage, s) => {
       const cells = [];
-      for (let r = 0; r < 4; r++) for (let c = 0; c < 5; c++) {
-        const me = s.me && s.me[0] === r && s.me[1] === c, foe = s.foe && s.foe[0] === r && s.foe[1] === c;
-        cells.push(h('div', { class: 'dm-cell jg' }, me ? h('span', { class: 'jg-piece demo-pc', style: { background: 'var(--p0)' } }, '졸') : foe ? h('span', { class: 'jg-piece demo-pc', style: { background: 'var(--p1)' } }, '졸') : null));
+      for (let r = 0; r < NN; r++) for (let c = 0; c < NN; c++) {
+        const k = r + ',' + c, pc = s.B[k];
+        const cls = 'dm-cell jg' + (s.danger && reach.has(k) ? ' danger' : '') + (s.bad === k ? ' bad' : '') + (s.good === k ? ' good' : '');
+        cells.push(h('div', { class: cls }, pc ? h('span', { class: 'jg-piece demo-pc' + (pc[1] === 'B' ? ' king' : ''), style: { background: pc[0] === 'me' ? 'var(--p0)' : 'var(--p1)' } }, pc[1] === 'B' ? '大' : '小') : null));
       }
-      const cardRow = (name, first, c1) => h('div', { class: 'demo-cards' }, h('span', { class: 'demo-cname' }, name, first ? h('span', { class: 'chip-tag' }, '선') : null),
-        [0, 1, 2, 3, 4].map((k) => h('span', { class: 'demo-card' + (k === 0 && s.rev ? ' open' : '') }, k === 0 && s.rev ? c1 : '?')));
-      stage.append(grid(5, cells, 40), h('div', { class: 'demo-col' }, cardRow('나', !s.alt, '사선'), cardRow('상대', !!s.alt, '후퇴')));
+      stage.append(grid(NN, cells, 40), h('div', { class: 'demo-col' }, h('div', { class: 'demo-cards' }, h('span', { class: 'demo-cname' }, '상대 다음'), card(3)), h('div', { class: 'demo-cards' }, h('span', { class: 'demo-cname' }, '내 카드'), card(2))));
     });
   };
 

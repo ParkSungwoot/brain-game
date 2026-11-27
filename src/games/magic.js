@@ -1,4 +1,4 @@
-/* 마법 격자: 마방진 채우기 (크기·시작 숫자·빈칸이 매번 달라짐) */
+/* 7×7 마방진: 마방진 채우기 (크기·시작 숫자·빈칸이 매번 달라짐) */
 (function () {
   const App = (globalThis.App = globalThis.App || {});
   const { h, rng: R } = App;
@@ -393,7 +393,7 @@
 
   App.games.push({
     id: 'magic',
-    name: '마법 격자',
+    name: '7×7 마방진',
     kicker: '숫자 퍼즐',
     players: '혼자',
     blurb: '가로·세로·대각선의 합이 모두 같도록 숫자를 채웁니다. 3×3부터 7×7까지, 시작 숫자와 빈칸 위치가 매번 달라요.',

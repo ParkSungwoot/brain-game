@@ -1,4 +1,4 @@
-/* 열셋 짐꾼: 받침대 합이 13을 넘지 않도록 바위를 올리는 심리전 (3~7인, 온라인/컴퓨터) */
+/* 무거운 13: 받침대 합이 13을 넘지 않도록 바위를 올리는 심리전 (3~7인, 온라인/컴퓨터) */
 (function () {
   const App = (globalThis.App = globalThis.App || {});
   const { h, rng: R } = App;
@@ -16,7 +16,7 @@
     id: 'heavy',
     minPlayers: 3, maxPlayers: 7, allowBots: true, defaultBots: 5,
     defaultOpts: {},
-    botNames: ['짐꾼 봇 A', '짐꾼 봇 B', '짐꾼 봇 C', '짐꾼 봇 D', '짐꾼 봇 E', '짐꾼 봇 F'],
+    botNames: ['컴퓨터 A', '컴퓨터 B', '컴퓨터 C', '컴퓨터 D', '컴퓨터 E', '컴퓨터 F'],
     start(players) {
       const n = players.length;
       return {
@@ -355,7 +355,7 @@
 
   App.games.push({
     id: 'heavy',
-    name: '열셋 짐꾼',
+    name: '무거운 13',
     kicker: '심리전',
     players: '3~7인 · 온라인 / 컴퓨터',
     blurb: '세 받침대에 바위를 올립니다. 합이 13 이상이 되게 만든 사람이 그동안 쌓인 바위만큼 벌점을 받아요.',

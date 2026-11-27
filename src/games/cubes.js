@@ -1,4 +1,4 @@
-/* 큐브 더미: 입체로 쌓인 큐브의 개수를 빨리 맞히기 */
+/* 큐브 세기: 입체로 쌓인 큐브의 개수를 빨리 맞히기 */
 (function () {
   const App = (globalThis.App = globalThis.App || {});
   const { h } = App;
@@ -223,7 +223,7 @@
 
   App.quick.register({
     id: 'cubes',
-    name: '큐브 더미',
+    name: '큐브 세기',
     kicker: '스피드 퍼즐',
     blurb: '입체로 쌓인 큐브가 모두 몇 개인지 빨리 맞힙니다. 보이지 않는 아래쪽 큐브까지 세야 해요.',
     kind: 'number',

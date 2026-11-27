@@ -1,4 +1,4 @@
-/* 담장 영토전: 말을 움직이고 담장을 세워 더 넓은 땅을 차지 (1:1, 온라인/컴퓨터) */
+/* 벽바둑 2: 말을 움직이고 담장을 세워 더 넓은 땅을 차지 (1:1, 온라인/컴퓨터) */
 (function () {
   const App = (globalThis.App = globalThis.App || {});
   const { h, rng: R } = App;
@@ -329,7 +329,7 @@
 
   App.games.push({
     id: 'wall',
-    name: '담장 영토전',
+    name: '벽바둑 2',
     kicker: '전략',
     players: '1:1 · 온라인 / 컴퓨터',
     blurb: '7×7 판에서 말을 두 칸까지 움직이고 담장을 세웁니다. 내 말만 있는 구역이 넓은 쪽이 이겨요.',

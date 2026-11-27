@@ -1,4 +1,4 @@
-/* 색실 잇기: 같은 색 말끼리 겹치지 않는 길로 이어질 수 있게 번갈아 놓기 (1:1, 온라인/컴퓨터) */
+/* 컬러 링크: 같은 색 말끼리 겹치지 않는 길로 이어질 수 있게 번갈아 놓기 (1:1, 온라인/컴퓨터) */
 (function () {
   const App = (globalThis.App = globalThis.App || {});
   const { h, rng: R } = App;
@@ -165,7 +165,7 @@
     id: 'link',
     minPlayers: 2, maxPlayers: 2, allowBots: true, defaultBots: 2,
     defaultOpts: { size: 7, ai: 'normal' },
-    botNames: ['색실 봇'],
+    botNames: ['컴퓨터'],
     start(players, o) {
       const N = o.size === 6 ? 6 : 7;
       const K = N === 6 ? 12 : 14;
@@ -463,7 +463,7 @@
 
   App.games.push({
     id: 'link',
-    name: '색실 잇기',
+    name: '컬러 링크',
     kicker: '결승 전략',
     players: '1:1 · 온라인 / 컴퓨터',
     blurb: '같은 색 말끼리 서로 겹치지 않는 길로 이어질 수 있도록 번갈아 놓습니다. 상대 수가 이어질 수 없다고 생각되면 “불가능”을 선언하세요.',

@@ -1,4 +1,4 @@
-/* 네모 사냥: 숫자판에서 합이 목표 값인 직사각형 개수 세기 */
+/* 네모 세기: 숫자판에서 합이 목표 값인 직사각형 개수 세기 */
 (function () {
   const App = (globalThis.App = globalThis.App || {});
   const { h } = App;
@@ -56,7 +56,7 @@
       const hits = rects.filter((r) => r[4] === target).map((r) => r.slice(0, 4));
       return { rows, cols, cells, target, hits };
     }
-    throw new Error('네모 사냥 문제 생성 실패');
+    throw new Error('네모 세기 문제 생성 실패');
   }
 
   function boardEl(pz, highlight) {
@@ -101,7 +101,7 @@
 
   App.quick.register({
     id: 'nemo',
-    name: '네모 사냥',
+    name: '네모 세기',
     kicker: '스피드 퍼즐',
     blurb: '숫자판에서 안의 수를 더하면 목표 값이 되는 직사각형을 빠짐없이 셉니다. 판 모양과 숫자, 목표가 매번 바뀌어요.',
     kind: 'number',

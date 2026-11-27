@@ -1,4 +1,4 @@
-/* 뒤집기 탑: 규칙 계산과 최단 수 탐색 (화면 없이 동작) */
+/* 수식의 탑: 규칙 계산과 최단 수 탐색 (화면 없이 동작) */
 (function () {
   const App = (globalThis.App = globalThis.App || {});
   const R = App.rng;

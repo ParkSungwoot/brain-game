@@ -1,4 +1,4 @@
-/* 삼색 수식: 숨은 등식을 초록·노랑·빨강 신호로 추리 (혼자 / 1:1 온라인) */
+/* 수식 신호등: 숨은 등식을 초록·노랑·빨강 신호로 추리 (혼자 / 1:1 온라인) */
 (function () {
   const App = (globalThis.App = globalThis.App || {});
   const { h, rng: R } = App;
@@ -340,7 +340,7 @@
 
   App.games.push({
     id: 'signal',
-    name: '삼색 수식',
+    name: '수식 신호등',
     kicker: '추리 퍼즐',
     players: '혼자 · 1:1 온라인',
     blurb: '숨은 등식을 초록·노랑·빨강 신호만 보고 맞힙니다. 7~10칸, 거듭제곱 포함 여부가 매번 바뀌어요.',

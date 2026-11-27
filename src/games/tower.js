@@ -1,4 +1,4 @@
-/* 뒤집기 탑: 양면 블록을 옮기고 뒤집어 목표 값의 식을 쌓는 퍼즐 */
+/* 수식의 탑: 양면 블록을 옮기고 뒤집어 목표 값의 식을 쌓는 퍼즐 */
 (function () {
   const App = (globalThis.App = globalThis.App || {});
   const { h } = App;
@@ -180,7 +180,7 @@
 
   App.games.push({
     id: 'tower',
-    name: '뒤집기 탑',
+    name: '수식의 탑',
     kicker: '이동 퍼즐',
     players: '혼자',
     blurb: '앞뒤에 숫자와 기호가 적힌 블록을 옮기고 뒤집어, 목표 값이 나오는 식의 탑을 쌓습니다. 블록과 목표는 매판 새로 만들어져요.',

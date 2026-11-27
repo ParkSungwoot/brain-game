@@ -1,4 +1,4 @@
-/* 대칭 조각: 조각들을 돌려 붙여 선대칭 도형 하나를 만들기 */
+/* 대칭 퍼즐: 조각들을 돌려 붙여 선대칭 도형 하나를 만들기 */
 (function () {
   const App = (globalThis.App = globalThis.App || {});
   const { h } = App;
@@ -149,7 +149,7 @@
       });
       return { k, board: big ? [12, 10] : [10, 9], pieces: shown, sol: pieces, flip: !!o.flip, axisOdd: odd };
     }
-    throw new Error('대칭 조각 문제 생성 실패');
+    throw new Error('대칭 퍼즐 문제 생성 실패');
   }
 
   function mini(cells, color, size) {
@@ -378,7 +378,7 @@
 
   App.quick.register({
     id: 'sym',
-    name: '대칭 조각',
+    name: '대칭 퍼즐',
     kicker: '스피드 퍼즐',
     blurb: '조각 몇 개를 돌려 붙여서 접으면 딱 겹치는 선대칭 도형 하나를 만듭니다. 조각 모양이 매번 달라요.',
     kind: 'task',

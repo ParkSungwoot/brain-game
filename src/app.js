@@ -55,7 +55,7 @@
           const game = it.game && App.games.find((x) => x.id === it.game);
           return h('li', { class: 'prog-item' + (game ? ' ready' : '') },
             h('span', null, h('span', { class: 'pg-name' }, it.name), it.kind ? h('span', { class: 'pg-kind' }, it.kind) : null),
-            game ? h('a', { href: '#' + game.id }, game.name + '로 해보기') : h('span', { class: 'soon' }, '준비 중'));
+            game ? h('a', { href: '#' + game.id }, '해 보기 ▶') : h('span', { class: 'soon' }, '준비 중'));
         }))))),
       h('p', { class: 'note' }, '공개된 방송 정보를 바탕으로 정리한 목록이라 빠진 게임이 있을 수 있어요. 이 사이트는 팬이 만든 비공식 연습장이며 넷플릭스·제작사와 관계가 없습니다.'));
   }
@@ -126,7 +126,7 @@
     main.append(h('section', { class: 'games', 'aria-label': '게임 목록' }, order.map((id) => card(App.games.find((x) => x.id === id)))));
     main.append(h('footer', { class: 'foot' },
       h('p', { class: 'by' }, h('a', { class: 'by-link', href: 'https://www.instagram.com/parksungwoo_t', target: '_blank', rel: 'noopener' }, 'by @parksungwoo_t')),
-      h('p', null, '‘데블스 플랜’은 넷플릭스 프로그램이며, 이 사이트는 공식 서비스가 아닌 팬이 만든 연습장입니다. 게임 이름과 화면은 이 사이트에서 새로 만든 것이며, 일부 세부 규칙은 공개된 설명을 바탕으로 재구성했습니다. ' + (App.fire && App.fire.enabled() ? '공략 잠금 해제 정보는 이 브라우저에만 저장되고, 오늘의 문제·기록 대결 기록은 닉네임과 함께 순위 서버에 저장됩니다.' : '기록과 공략 잠금 해제 정보는 이 브라우저에만 저장됩니다.')),
+      h('p', null, '‘데블스 플랜’은 넷플릭스 프로그램이며, 이 사이트는 공식 서비스가 아닌 팬이 만든 연습장입니다. 게임 이름은 방송에서 쓰인 이름을 따랐고, 화면은 이 사이트에서 새로 만들었으며, 일부 세부 규칙은 공개된 설명을 바탕으로 재구성했습니다. ' + (App.fire && App.fire.enabled() ? '공략 잠금 해제 정보는 이 브라우저에만 저장되고, 오늘의 문제·기록 대결 기록은 닉네임과 함께 순위 서버에 저장됩니다.' : '기록과 공략 잠금 해제 정보는 이 브라우저에만 저장됩니다.')),
       h('p', null, '픽셀 글꼴: 갈무리(Galmuri) © Lee Minseo · ', h('a', { href: 'https://openfontlicense.org', target: '_blank', rel: 'noopener' }, 'SIL Open Font License 1.1'))));
     return main;
   }

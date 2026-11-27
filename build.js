@@ -52,7 +52,7 @@ ${body}
 const siteDir = path.join(__dirname, 'site');
 fs.mkdirSync(siteDir, { recursive: true });
 fs.writeFileSync(path.join(siteDir, 'index.html'), site);
-for (const f of ['banner.jpg', 'banner-m.jpg', 'og.jpg']) fs.copyFileSync(path.join(__dirname, 'assets', f), path.join(siteDir, f));
+for (const f of ['banner.jpg', 'og.jpg']) fs.copyFileSync(path.join(__dirname, 'assets', f), path.join(siteDir, f));
 const fbBundle = path.join(__dirname, 'fbkit', 'fb.js');
 if (fs.existsSync(fbBundle)) fs.copyFileSync(fbBundle, path.join(siteDir, 'fb.js'));
 fs.writeFileSync(path.join(siteDir, '.nojekyll'), '');

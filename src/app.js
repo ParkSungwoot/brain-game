@@ -188,8 +188,8 @@
 
   // 첫 화면 맨 위, 화면 폭을 가득 채우는 배너 (링크 미리보기 그림도 이 첫 화면으로 만들어짐)
   function bannerEl() {
+    // 휴대폰에서도 잘리지 않게 원본 전체를 화면 폭에 맞춤
     return h('picture', { class: 'banner' },
-      h('source', { media: '(max-width: 640px)', srcset: 'banner-m.jpg' }),
       h('img', { src: 'banner.jpg', width: '2000', height: '800', alt: '두뇌 서바이벌에 내가 참가한다면? 거대한 뇌가 빛나는 방 한가운데, 뒷모습의 주인공을 정장 차림의 참가자 일곱 명이 둘러싼 그림' }));
   }
 

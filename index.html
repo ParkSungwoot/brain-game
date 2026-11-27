@@ -745,6 +745,24 @@ tr.me td { background: var(--accent-soft); }
 .center-text { text-align: center; }
 @media (prefers-reduced-motion: reduce) { .count-big.tick { animation: none; } }
 
+/* ---------- 팀전 ---------- */
+.team-btn.t0, .team-tag.t0, .team-pill.t0 { border-color: var(--p0); color: var(--p0); }
+.team-btn.t1, .team-tag.t1, .team-pill.t1 { border-color: var(--p1); color: var(--p1); }
+.seat-dot.t0 { background: var(--p0); }
+.seat-dot.t1 { background: var(--p1); }
+.mode-note { margin: 0; line-height: 1.6; }
+.rank-box { display: grid; gap: 10px; }
+.rank-box .result-box { margin-top: 0; }
+.all-rank { display: grid; gap: 8px; justify-items: center; margin-top: 12px; }
+
+/* ---------- 첫 화면 동시 접속자 ---------- */
+.online-count { width: fit-content; justify-self: start; display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 10px; padding: 4px 10px; border: 2px solid var(--line-strong); background: var(--surface); font-size: 13px; color: var(--muted); }
+.online-count b { color: var(--ink); font-family: var(--font-mono); }
+.online-count .dot { width: 8px; height: 8px; background: var(--sig-g); box-shadow: 0 0 0 2px #000; animation: blink 1.4s steps(2, start) infinite; }
+.online-count.full { border-color: var(--accent); }
+.online-count.full .dot { background: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .online-count .dot { animation: none; } }
+
 </style>
 <div id="topband"></div>
 <div id="app"></div>
@@ -1005,17 +1023,39 @@ tr.me td { background: var(--accent-soft); }
     }
     const cred = await F.signInAnonymously(auth);
     F.onValue(F.ref(db, '.info/serverTimeOffset'), (s) => { offset = Number(s.val()) || 0; });
-    return { F, db, uid: cred.user.uid, connRef: F.ref(db, '.info/connected') };
+    const K = { F, db, uid: cred.user.uid, connRef: F.ref(db, '.info/connected') };
+    startOnline(K);
+    return K;
+  }
+
+  // ----- 동시 접속자: online/{접속 id} 에 내 칸을 두고 개수를 셈 -----
+  let count = null;
+  const countSubs = new Set();
+  function startOnline(K) {
+    const F = K.F;
+    const me = F.ref(K.db, 'online/' + rid());
+    F.onValue(K.connRef, (s) => {
+      if (s.val() !== true) return;
+      F.set(me, { u: K.uid, t: F.serverTimestamp() }).then(() => F.onDisconnect(me).remove()).catch(() => {});
+    });
+    F.onValue(F.ref(K.db, 'online'), (snap) => {
+      count = snap.exists() ? Object.keys(snap.val() || {}).length : 0;
+      for (const fn of countSubs) { try { fn(count); } catch (e) { /* 무시 */ } }
+    }, () => {});
+    // 화면이 1분 넘게 가려져 있고 방에도 없으면 연결을 끊어 접속 자리를 비워 둠
+    let hideT = null;
+    document.addEventListener('visibilitychange', () => {
+      clearTimeout(hideT);
+      if (document.hidden) hideT = setTimeout(() => { if (live === 0) { try { F.goOffline(K.db); } catch (e) { /* 무시 */ } } }, 60000);
+      else { try { F.goOnline(K.db); } catch (e) { /* 무시 */ } }
+    });
   }
   function kit() {
     if (!kitP) { kitP = boot(); kitP.catch(() => { kitP = null; }); }
     return kitP;
   }
   function online(K) { live++; clearTimeout(offTimer); try { K.F.goOnline(K.db); } catch (e) { /* 무시 */ } }
-  function offline(K) {
-    live = Math.max(0, live - 1);
-    if (live === 0) { clearTimeout(offTimer); offTimer = setTimeout(() => { if (live === 0) { try { K.F.goOffline(K.db); } catch (e) { /* 무시 */ } } }, 4000); }
-  }
+  function offline() { live = Math.max(0, live - 1); }
 
   class FireRoom {
     constructor(K, name) {
@@ -1081,7 +1121,7 @@ tr.me td { background: var(--accent-soft); }
       this.subs.clear(); this.errs.clear();
       try { await this.F.onDisconnect(this.mine).cancel(); } catch (e) { /* 무시 */ }
       try { await this.F.remove(this.mine); } catch (e) { /* 무시 */ }
-      offline(this.K);
+      offline();
     }
   }
 
@@ -1093,6 +1133,37 @@ tr.me td { background: var(--accent-soft); }
       return r.open();
     },
     now: () => Date.now() + offset,
+    // 동시 접속자 수 (첫 화면 표시용). fn(n) 은 바뀔 때마다 불림
+    onCount(fn) {
+      countSubs.add(fn);
+      if (count != null) fn(count);
+      kit().catch(() => fn(null));
+      return () => countSubs.delete(fn);
+    },
+    limit: 100,
+    uid: async () => (await kit()).uid,
+    // 기록 저장: results/{묶음}/{내 uid} = { n: 이름, r: 문제별 기록, at } (처음 한 번만 쓸 수 있음)
+    async saveResult(key, name, r) {
+      const K = await kit(), F = K.F;
+      try { await F.set(F.ref(K.db, 'results/' + key + '/' + K.uid), { n: String(name).slice(0, 24), r, at: F.serverTimestamp() }); return true; } catch (e) { return false; }
+    },
+    async results(key) {
+      const K = await kit(), F = K.F;
+      const v = (await F.get(F.ref(K.db, 'results/' + key))).val() || {};
+      return Object.keys(v).map((u) => ({ uid: u, me: u === K.uid, name: v[u].n, r: v[u].r, at: v[u].at }));
+    },
+    // 기록 대결 문제 묶음: sets/{게임-방코드} = { u, key, d: JSON(설정·시드), at } → 나중에 같은 방 코드로 온 사람이 풀 수 있게
+    async putSet(name, key, d) {
+      const K = await kit(), F = K.F;
+      try { await F.set(F.ref(K.db, 'sets/' + name), { u: K.uid, key, d: JSON.stringify(d), at: F.serverTimestamp() }); return true; } catch (e) { return false; }
+    },
+    async getSet(name) {
+      const K = await kit(), F = K.F;
+      try {
+        const v = (await F.get(F.ref(K.db, 'sets/' + name))).val();
+        return v ? Object.assign({ key: v.key, at: v.at }, JSON.parse(v.d)) : null;
+      } catch (e) { return null; }
+    },
   };
 })();
 
@@ -1285,7 +1356,7 @@ tr.me td { background: var(--accent-soft); }
       const e = this.engine;
       this.W = {
         g: this.gameId, ph: 'lobby', v: 0,
-        pl: [{ p: this.myPeer || 'host', n: this.nick, b: 0, on: 1 }],
+        pl: [{ p: this.myPeer || 'host', n: this.nick, b: 0, on: 1, tm: 0 }],
         o: Object.assign({}, e.defaultOpts || {}),
         s: null, ak: [], er: null, dl: [], res: null,
       };
@@ -1321,7 +1392,7 @@ tr.me td { background: var(--accent-soft); }
         // 새로 온 사람 넣기
         for (const [peer, p] of present) {
           if (!W.pl.some((x) => x.p === peer) && W.pl.length < this.engine.maxPlayers) {
-            W.pl.push({ p: peer, n: App.cleanNick(p.presence.nick), b: 0, on: 1 });
+            W.pl.push({ p: peer, n: App.cleanNick(p.presence.nick), b: 0, on: 1, tm: this._nextTeam() });
             changed = true;
           }
         }
@@ -1373,7 +1444,7 @@ tr.me td { background: var(--accent-soft); }
         W.ph = 'end';
         W.res = e.results ? e.results(this.G) : null;
         // 유배지 한 명은 방장 화면에서 한 번만 정해서 모두에게 같은 결과를 보냄
-        if (W.res && Array.isArray(W.res.scores) && W.res.exile === undefined) {
+        if (W.res && Array.isArray(W.res.scores) && W.res.exile === undefined && !W.res.places) {
           const [ex, how] = pickExile(W.res.scores, W.res.tb);
           W.res.exile = ex;
           W.res.exileHow = how;
@@ -1496,8 +1567,24 @@ tr.me td { background: var(--accent-soft); }
       const names = e.botNames || ['컴퓨터 A', '컴퓨터 B', '컴퓨터 C', '컴퓨터 D', '컴퓨터 E', '컴퓨터 F', '컴퓨터 G'];
       const used = new Set(W.pl.map((x) => x.n));
       const n = names.find((x) => !used.has(x)) || '컴퓨터';
-      W.pl.push({ p: 'bot' + rid().slice(0, 6), n, b: 1, on: 1 });
+      W.pl.push({ p: 'bot' + rid().slice(0, 6), n, b: 1, on: 1, tm: this._nextTeam() });
       if (!silent) this._publish();
+    }
+    // 팀전: 인원이 적은 팀으로 넣음
+    _nextTeam() { const c = [0, 0]; for (const x of this.W.pl) c[x.tm ? 1 : 0]++; return c[0] <= c[1] ? 0 : 1; }
+    setSeatProp(i, k, v) {
+      const W = this.W;
+      if (!this.isHost || W.ph !== 'lobby' || !W.pl[i]) return;
+      W.pl[i][k] = v;
+      this._publish();
+    }
+    autoTeams() {
+      const W = this.W;
+      if (!this.isHost || W.ph !== 'lobby') return;
+      const idx = W.pl.map((_, i) => i);
+      for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
+      idx.forEach((seat, k) => { W.pl[seat].tm = k % 2; });
+      this._publish();
     }
     removeSeat(i) {
       const W = this.W;
@@ -1514,7 +1601,8 @@ tr.me td { background: var(--accent-soft); }
       const W = this.W, e = this.engine;
       if (!this.isHost) return;
       if (W.pl.length < e.minPlayers) { App.toast('최소 ' + e.minPlayers + '명이 필요해요.', 'warn'); return; }
-      this.G = e.start(W.pl.map((x) => ({ n: x.n, b: !!x.b })), W.o);
+      if (e.canStart) { const why = e.canStart(W); if (why) { App.toast(why, 'warn'); return; } }
+      this.G = e.start(W.pl.map((x) => ({ n: x.n, b: !!x.b, tm: x.tm ? 1 : 0 })), W.o, { code: this.mode === 'local' ? null : this.code, gameId: this.gameId });
       W.ph = 'play';
       W.gn = (W.gn || 0) + 1;
       W.res = null;
@@ -1590,7 +1678,7 @@ tr.me td { background: var(--accent-soft); }
   function announcement(W, mySeat) {
     const scores = W.res && Array.isArray(W.res.scores) ? W.res.scores : null;
     if (!scores || scores.length !== W.pl.length || W.pl.length < 2) return null;
-    const places = assignPlaces(scores, W.res.exile);
+    const places = Array.isArray(W.res.places) ? W.res.places : assignPlaces(scores, W.res.exile);
     const order = [...W.pl.keys()].sort((a, b) => ({ live: 0, prison: 1, exile: 2 })[places[a]] - ({ live: 0, prison: 1, exile: 2 })[places[b]]);
     return h('section', { class: 'announce', 'aria-label': '숙소 배정 안내' },
       h('p', { class: 'announce-head' }, '📢 안내 방송'),
@@ -1700,6 +1788,7 @@ tr.me td { background: var(--accent-soft); }
                 i === s.mySeat ? tag('나') : null,
                 p.b ? tag('컴퓨터') : null,
                 !p.on ? tag('연결 끊김', 'warn') : null),
+              cfg.seatExtra ? cfg.seatExtra(s, i, p) : null,
               s.isHost && i !== 0 && W.ph === 'lobby' ? h('button', { class: 'btn tiny ghost seat-x', onclick: () => s.removeSeat(i), 'aria-label': p.n + ' 빼기' }, '빼기') : null));
           } else {
             cells.push(h('li', { class: 'seat empty' },
@@ -1716,6 +1805,13 @@ tr.me td { background: var(--accent-soft); }
         if (s !== session) return;
         App.clear(view);
         if (s.status === 'connecting') { view.append(h('div', { class: 'center-msg' }, '방에 연결하는 중…')); return; }
+        if (s.status === 'nohost' && cfg.lateJoin) {
+          const box = h('div', { class: 'center-msg' }, h('p', null, '방을 찾는 중…'));
+          view.append(box);
+          if (!s._late) s._late = cfg.lateJoin(s.code);
+          s._late.then((el) => { if (session !== s || !box.isConnected) return; App.clear(box); if (el) box.replaceWith(el(leave)); else box.append(h('p', null, s.error), h('button', { class: 'btn', onclick: leave }, '처음으로')); });
+          return;
+        }
         if (s.status === 'failed' || s.status === 'nohost' || s.status === 'hostleft') {
           view.append(h('div', { class: 'center-msg' }, h('p', null, s.error || '연결에 문제가 생겼어요.'), h('button', { class: 'btn', onclick: leave }, '처음으로')));
           return;
@@ -1797,7 +1893,7 @@ tr.me td { background: var(--accent-soft); }
 })();
 
 /* ---- quick.js ---- */
-/* 빨리 풀기 게임 공용 틀: 시드 난수, 혼자 연습(5문제), 온라인 경주(먼저 맞힌 사람 득점) */
+/* 빨리 풀기 게임 공용 틀: 시드 난수, 혼자 연습(5문제), 오늘의 문제(전체 순위), 온라인 대결(빨리 맞히기·팀전 / 기록 대결) */
 (function () {
   const App = (globalThis.App = globalThis.App || {});
   const { h } = App;
@@ -1841,20 +1937,35 @@ tr.me td { background: var(--accent-soft); }
     return cache.get(key);
   }
 
-  // ---------- 온라인 경주 규칙 ----------
-  function raceEngine(def) {
+  // ---------- 온라인 대결 규칙: 빨리 맞히기(개인전·팀전) / 기록 대결 ----------
+  const TEAMS = ['A팀', 'B팀'];
+  const netNow = () => (App.Net && App.Net.now ? App.Net.now() : Date.now());
+  function seedsFrom(seed, n) { const r = srng((seed ^ 0x5bd1e995) >>> 0); return Array.from({ length: n }, () => Math.floor(r.f() * 2147483647)); }
+  const clampInt = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.floor(Number(v) || 0)));
+
+  function duelEngine(def) {
     const e = {
       id: def.id,
       minPlayers: 2, maxPlayers: 6, allowBots: true, defaultBots: 2,
-      defaultOpts: Object.assign({ rounds: 5 }, def.defaultOpts),
+      defaultOpts: Object.assign({ mode: 'fast', rounds: 5, count: 5, team: 0 }, def.defaultOpts),
       botNames: ['컴퓨터 A', '컴퓨터 B', '컴퓨터 C', '컴퓨터 D', '컴퓨터 E'],
-      start(players, o) {
+      canStart(W) {
+        if (W.o.mode !== 'rec' && W.o.team) {
+          const c = [0, 0];
+          W.pl.forEach((x) => { c[x.tm ? 1 : 0]++; });
+          if (!c[0] || !c[1]) return '두 팀에 한 명 이상씩 있어야 해요. 「팀 자동 나누기」를 눌러 보세요.';
+        }
+        return null;
+      },
+      start(players, o, info) {
+        if (o.mode === 'rec') return recStart(players, o, info);
         const n = players.length;
-        const G = { n, o: Object.assign({}, o), rounds: o.rounds || 5, round: 0, pts: Array(n).fill(0), wrong: Array(n).fill(0), lock: Array(n).fill(0), ph: 'play', win: -1, seed: 0, until: 0, last: null };
+        const G = { mode: 'fast', n, o: Object.assign({}, o), team: o.team ? 1 : 0, tm: players.map((p) => (p.tm ? 1 : 0)), rounds: o.rounds || 5, round: 0, pts: Array(n).fill(0), wrong: Array(n).fill(0), lock: Array(n).fill(0), ph: 'play', win: -1, seed: 0, until: 0, last: null };
         nextRound(G);
         return G;
       },
       act(G, seat, a) {
+        if (G.mode === 'rec') return recAct(G, seat, a);
         if (G.ph !== 'play') throw new Error('지금은 답할 수 없어요');
         const now = Date.now();
         if (G.lock[seat] > now) throw new Error('잠겨 있어요. ' + Math.ceil((G.lock[seat] - now) / 1000) + '초 뒤에 다시 답할 수 있어요');
@@ -1875,6 +1986,7 @@ tr.me td { background: var(--accent-soft); }
         }
       },
       tick(G, now) {
+        if (G.mode === 'rec') return false;
         if (G.ph === 'play' && now >= G.until) { G.win = -1; G.ph = 'reveal'; G.until = now + REVEAL_MS; return true; }
         if (G.ph === 'reveal' && now >= G.until) {
           if (G.round >= G.rounds) { G.ph = 'end'; return true; }
@@ -1884,16 +1996,23 @@ tr.me td { background: var(--accent-soft); }
         return false;
       },
       pending(G) {
+        if (G.mode === 'rec') return G.st.map((x, i) => (x.d ? -1 : i)).filter((i) => i >= 0);
         if (G.ph !== 'play') return [];
         const now = Date.now();
         return [...Array(G.n).keys()].filter((s) => G.lock[s] <= now);
       },
       timeLimit() { return 0; },
-      botDelay(G) {
+      botDelay(G, seat) {
+        if (G.mode === 'rec') {
+          if (!G.bots[seat]) return 30000; // 연결이 끊긴 사람: 30초 기다렸다가 그만둔 것으로
+          const pz = puzzleOf(def, G.seeds[G.st[seat].k - 1], G.o);
+          return Math.max(0, G.go - netNow()) + def.botTime(pz, G.o) * 1000 * (0.65 + Math.random() * 0.9);
+        }
         const pz = puzzleOf(def, G.seed, G.o);
         return def.botTime(pz, G.o) * 1000 * (0.65 + Math.random() * 0.9);
       },
-      bot(G) {
+      bot(G, seat) {
+        if (G.mode === 'rec') return G.bots[seat] ? { t: 'bot' } : { t: 'quit' };
         const pz = puzzleOf(def, G.seed, G.o);
         if (def.kind === 'task') return { t: 'done' };
         const ans = def.answer(pz);
@@ -1902,14 +2021,28 @@ tr.me td { background: var(--accent-soft); }
       },
       timeout() { return null; },
       publicView(G) {
+        if (G.mode === 'rec') return { mode: 'rec', n: G.cnt, o: G.o, seed: G.seed, go: G.go, key: G.key, ph: G.ph, st: G.st.map((x) => ({ k: x.k, s: x.s, d: x.d, r: x.r, q: x.q })) };
         const now = Date.now();
         return {
+          mode: 'fast', team: G.team, tm: G.tm,
           o: G.o, rounds: G.rounds, round: G.round, seed: G.seed, ph: G.ph, pts: G.pts, wrong: G.wrong, win: G.win, last: G.last,
           lockRem: G.lock.map((t) => Math.max(0, t - now)), rem: Math.max(0, G.until - now),
         };
       },
       over(G) { return G.ph === 'end'; },
-      results(G) { return { pts: G.pts, scores: G.pts.slice(), tb: G.wrong.map((w) => -w) }; },
+      results(G) {
+        if (G.mode === 'rec') {
+          const sums = G.st.map((x) => summarize(decodeEntries(x.r, G.cnt) || []));
+          return { rec: true, scores: sums.map((m) => m.solved * 1e7 - Math.round(m.total / 100)) };
+        }
+        if (G.team) {
+          const tp = [0, 0];
+          G.pts.forEach((p, i) => { tp[G.tm[i]] += p; });
+          const win = tp[0] === tp[1] ? -1 : tp[0] > tp[1] ? 0 : 1;
+          return { pts: G.pts, team: tp, scores: G.tm.map((t) => tp[t]), places: G.tm.map((t) => (win < 0 || t === win ? 'live' : 'prison')) };
+        }
+        return { pts: G.pts, scores: G.pts.slice(), tb: G.wrong.map((w) => -w) };
+      },
     };
     function nextRound(G) {
       G.round++;
@@ -1920,6 +2053,36 @@ tr.me td { background: var(--accent-soft); }
       G.last = null;
       G.lock = Array(G.n).fill(0);
       G.until = Date.now() + ROUND_MS;
+    }
+    // 기록 대결: 같은 문제 묶음을 각자 끝까지. 5초 뒤(서버 시각 기준) 같이 시작
+    function recStart(players, o, info) {
+      const cnt = o.count || 5, seed = newSeed() >>> 0;
+      const key = info && info.code ? ('rec-' + info.gameId + '-' + info.code + '-' + seed.toString(36)).toLowerCase().replace(/[^a-z0-9-]/g, '') : null;
+      const go = netNow() + 5000;
+      return {
+        mode: 'rec', cnt, o: Object.assign({}, o), seed, seeds: seedsFrom(seed, cnt), key, go, ph: 'play',
+        bots: players.map((p) => !!p.b), st: players.map(() => ({ k: 1, s: 0, d: 0, r: '', q: 0 })), la: players.map(() => go), bt: players.map(() => []),
+      };
+    }
+    function recAct(G, seat, a) {
+      const x = G.st[seat];
+      if (!x || x.d) throw new Error('이미 다 풀었어요');
+      if (a && a.t === 'prog') { x.k = clampInt(a.k, 1, G.cnt); x.s = clampInt(a.s, 0, G.cnt); }
+      else if (a && a.t === 'fin') {
+        const res = decodeEntries(String(a.r || ''), G.cnt);
+        if (!res) throw new Error('기록을 읽지 못했어요');
+        x.d = 1; x.r = String(a.r); x.k = G.cnt; x.s = res.filter((r) => r.ok).length;
+      } else if (a && a.t === 'bot') {
+        const now = netNow();
+        const ok = Math.random() < 0.85;
+        G.bt[seat].push({ ok, time: Math.max(1500, now - G.la[seat]), wrong: ok ? 0 : 1 });
+        G.la[seat] = now;
+        if (ok) x.s++;
+        if (x.k >= G.cnt) { x.d = 1; x.r = encodeEntries(G.bt[seat]); } else x.k++;
+      } else if (a && a.t === 'quit') {
+        x.d = 1; x.q = 1; x.r = encodeEntries(Array.from({ length: G.cnt }, () => ({ ok: false, time: 0, wrong: 0 })));
+      } else throw new Error('잘못된 행동');
+      if (G.st.every((y) => y.d)) G.ph = 'end';
     }
     return e;
   }
@@ -1940,7 +2103,7 @@ tr.me td { background: var(--accent-soft); }
     return { el: h('div', { class: 'ans-row' }, inp, btn), inp, btn };
   }
 
-  // ---------- 문제 묶음 풀기 (혼자 연습·대결 코드 공용) ----------
+  // ---------- 문제 묶음 풀기 (혼자 연습·오늘의 문제·기록 대결 공용) ----------
   // cfg: { seeds, opts, toolbar(): el|null, label, onEnd(results) }
   function problemSet(wrap, ctx, def, cfg) {
     const seeds = cfg.seeds, N = seeds.length, opts = cfg.opts;
@@ -2070,73 +2233,24 @@ tr.me td { background: var(--accent-soft); }
         h('p', null, '총 ' + App.fmtTime(total) + (solved.length ? ' · 맞힌 문제 평균 ' + App.fmtTime(solved.reduce((a, r) => a + r.time, 0) / solved.length) : '')),
         resultTable(results),
         h('button', { class: 'btn primary', onclick: restart }, '한 번 더'),
-        h('p', { class: 'note' }, '친구와 같은 문제로 겨뤄 보고 싶다면 위의 「대결 코드」 탭을 써 보세요.')));
+        h('p', { class: 'note' }, '다른 사람과 순위를 겨뤄 보고 싶다면 위의 「오늘의 문제」나 「온라인 대결」을 해 보세요.')));
     }
 
     restart();
     return () => { if (set) set.destroy(); };
   }
 
-  // ---------- 대결 코드: 같은 문제를 각자 풀고 결과 코드를 주고받아 순위 비교 ----------
-  // 서버·로그인 없이 동작. 대결 코드 = 게임 + 설정 + 문제 수 + 시드 + 확인 글자
+  // ---------- 기록·순위 공용 도구 ----------
   const SHARE_URL = App.SHARE_URL || 'https://claude.ai/artifact/7PS8wBkQySgG8HmrkLpRRG';
-  const C32 = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const byPrefix = {};
-  function prefixOf(def) { return String(def.codePrefix || def.id.slice(0, 2)).toUpperCase(); }
-  function b32(n, len) { let s = ''; for (let i = 0; i < len; i++) { s = C32[n % 32] + s; n = Math.floor(n / 32); } return s; }
-  function unb32(s) { let n = 0; for (const c of s) n = n * 32 + C32.indexOf(c); return n; }
-  function chk(s) { let a = 7; for (let i = 0; i < s.length; i++) a = (a * 31 + s.charCodeAt(i)) % 1000003; return C32[a % 32]; }
-  // 설정 값 목록: 게임의 설정 버튼을 한 번씩 눌러 보며 모음 (게임마다 따로 적지 않아도 됨)
-  function domainsOf(def) {
-    if (def._dom) return def._dom;
-    const dom = {};
-    const tmp = h('div');
-    def.optionsUI(tmp, Object.assign({}, def.defaultOpts), (k, v) => {
-      dom[k] = dom[k] || [];
-      if (!dom[k].some((x) => String(x) === String(v))) dom[k].push(v);
-    }, false);
-    tmp.querySelectorAll('button').forEach((b) => b.click());
-    def._dom = dom;
-    return dom;
-  }
+  const hasServer = () => !!(App.fire && App.fire.enabled && App.fire.enabled());
+  const myNick = () => App.cleanNick(App.store.get('nick', ''));
+  const pad2 = (x) => String(x).padStart(2, '0');
   function optLabel(def, opts) {
     const tmp = h('div');
     def.optionsUI(tmp, opts, () => {}, true);
     return [...tmp.querySelectorAll('.seg-btn.on')].map((b) => b.textContent).join(' · ');
   }
-  function makeCode(def, opts, n, seed) {
-    const dom = domainsOf(def);
-    const digits = Object.keys(dom).map((k) => Math.max(0, dom[k].findIndex((x) => String(x) === String(opts[k])))).join('') + n;
-    const seedS = b32(seed, 6);
-    return prefixOf(def) + '-' + digits + '-' + seedS + chk(prefixOf(def) + digits + seedS);
-  }
-  function parseChallenge(text) {
-    const m = String(text).toUpperCase().match(/([A-Z]{2})-?(\d{2,9})-?([A-Z2-9]{7})/);
-    if (!m) return { err: '대결 코드를 찾지 못했어요. 받은 코드나 메시지를 그대로 붙여 넣어 주세요.' };
-    const def = byPrefix[m[1]];
-    if (!def) return { err: '이 코드에 맞는 게임을 찾지 못했어요.' };
-    const dom = domainsOf(def), keys = Object.keys(dom);
-    const digits = m[2], seedS = m[3].slice(0, 6), c = m[3][6];
-    if (digits.length !== keys.length + 1 || [...seedS].some((x) => !C32.includes(x))) return { err: '코드 모양이 맞지 않아요. 다시 확인해 주세요.' };
-    if (chk(m[1] + digits + seedS) !== c) return { err: '코드에 오타가 있는 것 같아요. 다시 확인해 주세요.' };
-    const opts = Object.assign({}, def.defaultOpts);
-    keys.forEach((k, i) => { const v = dom[k][+digits[i]]; if (v !== undefined) opts[k] = v; });
-    const n = +digits[keys.length];
-    if (n < 1) return { err: '코드 모양이 맞지 않아요.' };
-    return { def, opts, n, seed: unb32(seedS), code: m[1] + '-' + digits + '-' + seedS + c };
-  }
-  function seedsOf(ch) { const r = srng(ch.seed ^ 0x5bd1e995); return Array.from({ length: ch.n }, () => Math.floor(r.f() * 2147483647)); }
-  function toB64(s) {
-    const b = new TextEncoder().encode(s); let bin = '';
-    b.forEach((x) => { bin += String.fromCharCode(x); });
-    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  }
-  function fromB64(s) {
-    try {
-      const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4));
-      return App.cleanNick(new TextDecoder().decode(Uint8Array.from(bin, (x) => x.charCodeAt(0)))) || '이름 없음';
-    } catch (e) { return '이름 없음'; }
-  }
+  // 문제별 기록을 짧은 글자로: 정답이면 시간(0.1초, 36진수), 포기면 앞에 !, 오답 수는 ~숫자
   function encodeEntries(res) { return res.map((r) => (r.ok ? '' : '!') + Math.round(r.time / 100).toString(36) + (r.wrong ? '~' + Math.min(99, r.wrong) : '')).join(','); }
   function decodeEntries(s, n) {
     const parts = String(s).split(',');
@@ -2149,59 +2263,18 @@ tr.me td { background: var(--accent-soft); }
     }
     return out;
   }
-  function resultCode(ch, mine) {
-    const body = ch.code + '.' + toB64(mine.name) + '.' + encodeEntries(mine.res);
-    return body + '.' + chk(body);
-  }
-  // 붙여 넣은 글에서 결과 코드 또는 대결 코드 찾기
-  function parseAny(text) {
-    const t = String(text || '');
-    const rm = t.match(/([A-Za-z]{2}-?\d{2,9}-?[A-Za-z2-9]{7})\.([A-Za-z0-9_-]{0,90})\.([0-9a-z!~,]{1,300})\.([A-Za-z2-9])/);
-    if (rm) {
-      const ch = parseChallenge(rm[1]);
-      if (ch.err) return ch;
-      const body = ch.code + '.' + rm[2] + '.' + rm[3];
-      if (chk(body) !== rm[4].toUpperCase()) return { ch, err: '결과 코드가 중간에 잘린 것 같아요. 받은 메시지를 통째로 다시 붙여 넣어 주세요.' };
-      const res = decodeEntries(rm[3], ch.n);
-      if (!res) return { ch, err: '결과 코드를 읽지 못했어요.' };
-      return { ch, result: { name: fromB64(rm[2]), res } };
-    }
-    const re = /[A-Za-z]{2}-?\d{2,9}-?[A-Za-z2-9]{7}/g;
-    let m, firstErr = null;
-    while ((m = re.exec(t))) {
-      const ch = parseChallenge(m[0]);
-      if (!ch.err) return { ch };
-      firstErr = firstErr || ch.err;
-    }
-    return { err: firstErr || '대결 코드를 찾지 못했어요. 받은 코드나 메시지를 그대로 붙여 넣어 주세요.' };
-  }
   function summarize(res) {
     return { solved: res.filter((r) => r.ok).length, total: res.reduce((a, r) => a + r.time, 0), wrong: res.reduce((a, r) => a + (r.wrong || 0), 0) };
   }
   function fmtLong(ms) { const s = Math.round(ms / 1000); return (s >= 60 ? Math.floor(s / 60) + '분 ' : '') + (s % 60) + '초'; }
-  function loadRec(ch) { return App.store.get('ch.' + ch.code, null) || { code: ch.code, g: ch.def.id, at: Date.now(), mine: null, others: [] }; }
-  function saveRec(rec) {
-    App.store.set('ch.' + rec.code, rec);
-    const list = App.store.get('ch.list', []).filter((c) => c !== rec.code);
-    list.unshift(rec.code);
-    App.store.set('ch.list', list.slice(0, 40));
-  }
-  function addResult(rec, r) {
-    const key = r.name + '|' + encodeEntries(r.res);
-    if (rec.mine && rec.mine.name + '|' + encodeEntries(rec.mine.res) === key) return 'mine';
-    if (rec.others.some((o) => o.name + '|' + encodeEntries(o.res) === key)) return 'dup';
-    rec.others.push({ name: r.name, res: r.res, at: Date.now() });
-    return 'added';
-  }
-  function ranked(rec) {
-    const all = [];
-    if (rec.mine) all.push({ name: rec.mine.name, res: rec.mine.res, me: true });
-    rec.others.forEach((o, i) => all.push({ name: o.name, res: o.res, idx: i }));
-    all.forEach((r) => { r.s = summarize(r.res); });
+  // 순위: 맞힌 문제가 많을수록, 같으면 총 시간이 짧을수록 위
+  function rankRows(rows, n) {
+    const all = rows.map((x) => { const res = decodeEntries(x.r, n); return res ? { name: App.cleanNick(x.name), me: !!x.me, s: summarize(res) } : null; }).filter(Boolean);
     all.sort((a, b) => b.s.solved - a.s.solved || a.s.total - b.s.total);
     all.forEach((r, i) => { const p = all[i - 1]; r.rank = p && p.s.solved === r.s.solved && p.s.total === r.s.total ? p.rank : i + 1; });
     return all;
   }
+  const topPct = (rank, N) => Math.max(1, Math.round(rank / N * 100));
   function copyText(text) {
     return new Promise((resolve) => {
       const fallback = () => {
@@ -2215,7 +2288,7 @@ tr.me td { background: var(--accent-soft); }
     });
   }
   function shareBlock(label, text) {
-    const ta = h('textarea', { class: 'input share-text', rows: '6', readonly: true, 'aria-label': '보낼 글' });
+    const ta = h('textarea', { class: 'input share-text', rows: '4', readonly: true, 'aria-label': '보낼 글' });
     ta.value = text;
     const det = h('details', { class: 'share-det' }, h('summary', null, '보낼 글 미리 보기'), ta);
     const btn = h('button', { class: 'btn primary big', onclick: async () => {
@@ -2225,404 +2298,337 @@ tr.me td { background: var(--accent-soft); }
     } }, '📋 ' + label);
     return h('div', { class: 'share-block' }, btn, det);
   }
-  function codeTiles(code) {
-    return h('div', { class: 'code-tiles', 'aria-label': '코드 ' + code }, code.split('').map((c) => (c === '-' ? h('i', { 'aria-hidden': 'true' }, '-') : h('b', null, c))));
+  function nickField(id) {
+    const inp = h('input', { id, class: 'input', maxlength: '12', placeholder: '닉네임', value: App.store.get('nick', '') });
+    inp.addEventListener('input', () => App.store.set('nick', inp.value));
+    return h('label', { class: 'field', for: id }, h('span', null, '내 닉네임 (순위에 표시돼요)'), inp);
   }
 
-  function challenge(root, ctx, def) {
-    const wrap = h('div', { class: 'chal' });
-    root.append(wrap);
-    const put = (...els) => wrap.append(...els.filter(Boolean));
-    let set = null;
-    const cOpts = Object.assign({}, def.defaultOpts, App.store.get(def.id + '.opts', {}), App.store.get(def.id + '.chopts', {}));
-    let cN = App.store.get('ch.n', 5);
-    let waitTimer = null, liveHook = null;
-    const stopSet = () => { if (set) { set.destroy(); set = null; } clearInterval(waitTimer); waitTimer = null; liveHook = null; };
+  // 서버에 모인 기록으로 순위 상자 (N명 중 N위, 상위 %, 평균 시간)
+  function rankBox(key, n, o) {
+    const box = h('section', { class: 'rank-box', 'aria-live': 'polite' }, h('p', { class: 'note center-text' }, '순위를 불러오는 중…'));
+    function load() {
+      App.fire.results(key).then((rows) => {
+        App.clear(box);
+        const all = rankRows(rows, n);
+        const me = all.find((r) => r.me);
+        const N = all.length;
+        const avg = N ? all.reduce((a, r) => a + r.s.total, 0) / N : 0;
+        const top = all.slice(0, 10);
+        if (me && !top.includes(me)) top.push(me);
+        box.append(
+          h('div', { class: 'result-box ok' },
+            h('p', { class: 'note' }, o.title),
+            h('strong', { class: 'result-big' }, me ? N + '명 중 ' + me.rank + '위' : N + '명 참가'),
+            me ? h('p', null, '상위 ' + topPct(me.rank, N) + '% · 내 기록 ' + me.s.solved + '/' + n + ' 정답 · ' + fmtLong(me.s.total)) : null,
+            h('p', { class: 'note' }, N ? '참가자 평균 ' + fmtLong(avg) + ' · 1위 ' + all[0].name + ' ' + fmtLong(all[0].s.total) : '아직 기록이 없어요.')),
+          N ? h('table', { class: 'log rank' },
+            h('thead', null, h('tr', null, ['순위', '이름', '정답', '총 시간'].map((x) => h('th', null, x)))),
+            h('tbody', null, top.map((r) => h('tr', { class: r.me ? 'me' : '' }, h('td', null, r.rank), h('td', null, r.name, r.me ? ' (나)' : ''), h('td', null, r.s.solved + '/' + n), h('td', { class: 'mono' }, App.fmtTime(r.s.total)))))) : null,
+          h('div', { class: 'row center' }, h('button', { class: 'btn tiny ghost', onclick: () => { App.clear(box); box.append(h('p', { class: 'note center-text' }, '순위를 불러오는 중…')); load(); } }, '↻ 순위 새로고침')),
+          me && o.share ? shareBlock('결과 공유하기', o.share(me, N)) : null);
+      }).catch(() => {
+        App.clear(box);
+        box.append(h('p', { class: 'note center-text' }, '순위를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'), h('div', { class: 'row center' }, h('button', { class: 'btn tiny', onclick: load }, '다시 시도')));
+      });
+    }
+    load();
+    return box;
+  }
 
-    // ----- 실시간 대결 방: 같은 대결 코드를 연 사람끼리 준비·카운트다운·진행 상황·결과를 주고받음 -----
-    // presence: { g:'ch', nick, st:'idle'|'ready'|'play'|'done', rt:준비 시각, go:시작 시각, k:푸는 문제, s:맞힌 수, n, res:결과 코드 }
-    let live = null;
-    const liveOn = () => !!(App.Net && App.Net.online && App.Net.online());
-    const nowS = () => (App.Net && App.Net.now ? App.Net.now() : Date.now());
-    function connect(ch) {
-      if (!liveOn()) return;
-      if (live && live.code === ch.code) return;
-      disconnect();
-      const L = live = { code: ch.code, ch, room: null, others: [], pres: { g: 'ch', nick: myName() } };
-      App.Net.join('ch-' + ch.code.toLowerCase()).then((room) => {
-        if (live !== L) { try { room.leave(); } catch (e) { /* 무시 */ } return; }
-        L.room = room;
-        L.unsub = room.onPeers((c) => {
-          L.others = (c.peers || room.peers()).filter((p) => !p.sameTab && p.presence && p.presence.g === 'ch');
-          takeResults(L);
-          if (liveHook) liveHook();
-        }, () => {});
-        room.presence(L.pres).catch(() => {});
-      }).catch(() => { if (live === L) live = null; if (liveHook) liveHook(); });
-    }
-    function setLive(patch) {
-      if (!live) return;
-      patch = Object.assign({ nick: myName() }, patch);
-      for (const k in patch) { if (patch[k] === null || patch[k] === undefined) delete live.pres[k]; else live.pres[k] = patch[k]; }
-      if (live.room) live.room.presence(patch).catch(() => {});
-    }
-    function disconnect() {
-      if (!live) return;
-      const L = live; live = null;
-      try { L.unsub && L.unsub(); } catch (e) { /* 무시 */ }
-      try { L.room && L.room.leave(); } catch (e) { /* 무시 */ }
-    }
-    // 다른 사람이 다 푼 결과를 저절로 순위에 넣기
-    function takeResults(L) {
-      let added = [];
-      for (const p of L.others) {
-        if (typeof p.presence.res !== 'string') continue;
-        const r = parseAny(p.presence.res);
-        if (!r.result || r.ch.code !== L.code) continue;
-        const rec = loadRec(r.ch);
-        if (addResult(rec, r.result) === 'added') { saveRec(rec); added.push(r.result.name); }
-      }
-      if (added.length) { L.fresh = (L.fresh || []).concat(added); if (L.onResult) L.onResult(added); }
-    }
-    const others = () => (live ? live.others : []);
-    function statusText(p) {
-      const x = p.presence;
-      if (x.st === 'ready') return '준비 완료';
-      if (x.st === 'play') return '푸는 중 · ' + (x.k || 1) + '/' + (x.n || '?') + '번 · ' + (x.s || 0) + '개 정답';
-      if (x.st === 'done') return '다 풀었어요';
-      return '들어와 있어요';
-    }
-    function livePanel(title, emptyText) {
-      const el = h('section', { class: 'live-panel', 'aria-live': 'polite' });
-      const paint = () => {
-        App.clear(el);
-        if (!liveOn()) return;
-        const os = others();
-        el.append(h('h4', { class: 'sub' }, title), os.length
-          ? h('ul', { class: 'live-list' }, os.map((p) => h('li', { class: 'live-row st-' + (p.presence.st || 'idle') }, h('b', null, App.cleanNick(p.presence.nick)), h('span', null, statusText(p)))))
-          : h('p', { class: 'note' }, emptyText));
-      };
-      paint();
-      return { el, paint };
-    }
-    const myName = () => App.cleanNick(App.store.get('nick', ''));
-    const top = () => { try { wrap.scrollIntoView({ block: 'start' }); } catch (e) { /* 무시 */ } };
-
-    function inviteText(ch) {
-      return '🧠 두뇌 서바이벌 도전장!\n[' + def.name + '] ' + optLabel(def, ch.opts) + ' · ' + ch.n + '문제\n대결 코드: ' + ch.code +
-        '\n\n① 아래 링크를 열고 「' + def.name + '」 → 「대결 코드」 탭\n② 이 메시지를 통째로 붙여 넣고 「열기」\n' + SHARE_URL;
-    }
-    function resultText(ch, mine) {
-      const s = summarize(mine.res);
-      return '🧠 [' + def.name + '] 대결 결과\n' + mine.name + ': ' + s.solved + '/' + ch.n + ' 정답 · 총 ' + fmtLong(s.total) +
-        '\n결과 코드: ' + resultCode(ch, mine) +
-        '\n\n이 메시지를 「' + def.name + '」 → 「대결 코드」 탭에 붙여 넣으면 순위에 들어가요. 아직 안 풀었다면 같은 문제에 바로 도전할 수 있어요.\n' + SHARE_URL;
-    }
-    function nickField() {
-      const inp = h('input', { id: def.id + '-ch-nick', class: 'input', maxlength: '12', placeholder: '닉네임', value: App.store.get('nick', '') });
-      inp.addEventListener('input', () => App.store.set('nick', inp.value));
-      return h('label', { class: 'field', for: def.id + '-ch-nick' }, h('span', null, '내 닉네임 (결과에 표시돼요)'), inp);
-    }
-    function backBar(label) {
-      return h('div', { class: 'mp-bar' }, h('span', { class: 'bar-label' }, label || '대결 코드'), h('span', { class: 'spacer' }), h('button', { class: 'btn tiny ghost', onclick: () => home() }, '대결 목록'));
-    }
-
-    // 붙여 넣은 글 열기
-    function open(text) {
-      const r = parseAny(text);
-      if (!r.ch) { home(r.err); return; }
-      const ch = r.ch;
-      if (ch.def !== def) {
-        App.store.set('ch.pending', { g: ch.def.id, text: String(text) });
-        App.toast('「' + ch.def.name + '」 대결 코드예요. 그 게임으로 옮겨 갈게요.');
-        location.hash = '#' + ch.def.id;
-        return;
-      }
-      const rec = loadRec(ch);
-      let note = r.err || '';
-      if (r.result) {
-        const st = addResult(rec, r.result);
-        note = st === 'added' ? r.result.name + '님의 결과를 넣었어요.' : st === 'mine' ? '내 결과 코드예요.' : '이미 넣은 결과예요.';
-      }
-      saveRec(rec);
-      if (rec.mine) board(ch, note || (r.result ? '' : '이미 푼 대결이에요. 친구가 보낸 결과 메시지를 붙여 넣으면 순위에 들어가요.'));
-      else intro(ch, { from: r.result ? r.result.name : null, note });
-    }
-
-    function home(msg) {
-      stopSet(); disconnect(); App.clear(wrap);
-      const paste = h('textarea', { id: def.id + '-ch-paste', class: 'input paste', rows: '3', placeholder: '받은 대결 코드나 결과 메시지를 통째로 붙여 넣으세요', 'aria-label': '받은 대결 코드나 결과 메시지' });
-      const openBtn = h('button', { class: 'btn primary', onclick: () => { if (!paste.value.trim()) { paste.focus(); return; } open(paste.value); } }, '열기');
-      const bar = h('div', { class: 'toolbar' });
-      def.optionsUI(bar, cOpts, (k, v) => { cOpts[k] = v; App.store.set(def.id + '.chopts', cOpts); home(); }, false);
-      bar.append(h('div', { class: 'seg small' }, [3, 5, 7].map((n) => h('button', { class: 'seg-btn' + (cN === n ? ' on' : ''), onclick: () => { cN = n; App.store.set('ch.n', n); home(); } }, n + '문제'))));
-      const mk = h('button', { class: 'btn primary', onclick: () => {
-        const ch = parseChallenge(makeCode(def, cOpts, cN, Math.floor(Math.random() * 1073741824)));
-        saveRec(loadRec(ch));
-        intro(ch, { created: true });
-        top();
-      } }, '대결 코드 만들기');
+  // 같은 문제 묶음을 풀고 서버 순위에 넣는 화면 (오늘의 문제, 기록 대결을 나중에 풀기)
+  // cfg: { key, seeds, opts, n, localKey, head, sub, lead, barLabel, title, share(me,N), leave }
+  function setFlow(box, ctx, def, cfg) {
+    let ps = null;
+    const stop = () => { if (ps) { ps.destroy(); ps = null; } };
+    const put = (...els) => box.append(...els.filter(Boolean));
+    const top = () => { try { box.scrollIntoView({ block: 'start' }); } catch (e) { /* 무시 */ } };
+    const leaveBtn = cfg.leave ? h('button', { class: 'btn ghost', onclick: () => { stop(); cfg.leave(); } }, '나가기') : null;
+    function intro() {
+      stop(); App.clear(box);
+      if (App.store.get(cfg.localKey, null)) { result(); return; }
+      const stats = h('p', { class: 'note' }, hasServer() ? '참가 현황을 불러오는 중…' : '');
       put(
-        h('p', { class: 'chal-lead' }, '친구와 ', h('b', null, '똑같은 문제'), '를 각자 풀고, 결과를 주고받아 순위를 겨뤄요. 동시에 접속하지 않아도 되고 로그인도 필요 없어요.'),
-        nickField(),
-        h('div', { class: 'mode-grid' },
-          h('div', { class: 'mode-card' }, h('h4', null, '도전장 만들기'), h('p', null, '설정과 문제 수를 고르고 코드를 만들어 친구에게 보내세요.'), bar, mk),
-          h('div', { class: 'mode-card' }, h('h4', null, '받은 코드 열기'), h('p', null, '카톡으로 받은 도전장이나 결과 메시지를 그대로 붙여 넣으세요.'), paste, openBtn)),
-        msg ? h('p', { class: 'warn-note note' }, msg) : null,
-        historyList());
-    }
-
-    function historyList() {
-      const recs = App.store.get('ch.list', []).map((c) => App.store.get('ch.' + c, null)).filter((r) => r && r.g === def.id).slice(0, 8);
-      if (!recs.length) return null;
-      return h('section', { class: 'chal-hist' }, h('h4', { class: 'sub' }, '이 기기의 대결 기록'),
-        h('ul', { class: 'plist' }, recs.map((rec) => {
-          const ch = parseChallenge(rec.code);
-          if (ch.err) return null;
-          const rows = ranked(rec);
-          const me = rows.find((r) => r.me);
-          return h('li', { class: 'pitem' },
-            h('span', { class: 'mono' }, rec.code),
-            h('span', { class: 'note' }, me ? me.s.solved + '/' + ch.n + ' · ' + App.fmtTime(me.s.total) + (rows.length > 1 ? ' · ' + rows.length + '명 중 ' + me.rank + '등' : '') : '아직 안 풂'),
-            h('button', { class: 'btn tiny', onclick: () => { if (rec.mine) board(ch); else intro(ch, {}); top(); } }, '열기'));
-        })));
-    }
-
-    function intro(ch, o) {
-      stopSet(); App.clear(wrap);
-      const rec = loadRec(ch);
-      connect(ch);
-      setLive(rec.mine ? { st: 'done', res: resultCode(ch, rec.mine), rt: null, go: null } : { st: 'idle', rt: null, go: null, k: null, s: null });
-      const lp = livePanel('지금 이 대결에 들어와 있는 사람', '친구가 이 대결 코드를 열면 여기에 나타나요.');
-      liveHook = lp.paint;
-      const startNow = () => { if (liveOn() && !rec.mine) wait(ch); else play(ch); top(); };
-      const head = o.created ? '✅ 대결 코드가 만들어졌어요!' : o.from ? '📨 ' + o.from + '님의 도전장이 도착했어요!' : '📨 도전장';
-      const waiting = rec.others.length;
-      put(
-        backBar(),
-        h('section', { class: 'room-made' + (o.created || o.from ? ' pop' : '') },
-          h('p', { class: 'room-made-head' }, head),
-          codeTiles(ch.code),
-          h('p', { class: 'room-made-sub' }, def.name + ' · ' + optLabel(def, ch.opts) + ' · ' + ch.n + '문제'),
-          o.note ? h('p', { class: 'note' }, o.note) : null,
-          waiting ? h('p', { class: 'note' }, '친구 결과 ' + waiting + '개가 들어와 있어요. 내가 풀고 나면 순위를 볼 수 있어요.') : null),
-        o.from ? null : shareBlock('도전장 복사하기', inviteText(ch)),
-        lp.el,
-        h('ol', { class: 'chal-steps' }, (liveOn()
-          ? (o.from
-            ? ['둘 다 이 화면에서 「지금 풀기」를 누르면 5초 카운트다운 뒤 같이 시작해요.', '푸는 동안 친구가 몇 번 문제를 풀고 있는지 보여요.', '다 풀면 결과가 서로에게 저절로 전해져요.']
-            : ['「도전장 복사하기」를 눌러 카톡으로 친구에게 보내요.', '둘 다 「지금 풀기」를 누르면 5초 카운트다운 뒤 같이 시작해요.', '다 풀면 결과가 저절로 전해져서 바로 순위가 나와요. 친구가 나중에 풀어도 괜찮아요.'])
-          : (o.from
-            ? ['「지금 풀기」로 같은 문제를 풀어요.', '다 풀면 「내 결과 복사하기」로 친구에게 결과를 보내요.', '서로 결과 메시지를 붙여 넣으면 순위가 나와요.']
-            : ['「도전장 복사하기」를 눌러 카톡으로 친구에게 보내요.', '나도 「지금 풀기」로 풀어요. 친구가 먼저 풀어도 괜찮아요.', '서로 결과 메시지를 주고받아 붙여 넣으면 순위가 나와요.'])).map((t) => h('li', null, t))),
-        h('div', { class: 'row center' }, h('button', { class: 'btn primary big', onclick: startNow }, '지금 풀기')));
-    }
-
-    // 대기실: 들어와 있는 사람이 모두 준비하면 5초 카운트다운 뒤 같이 시작
-    function wait(ch) {
-      stopSet(); App.clear(wrap);
-      connect(ch);
-      setLive({ st: 'ready', rt: nowS(), go: null });
-      let T = null;
-      const big = h('div', { class: 'count-big', 'aria-live': 'assertive' });
-      const msg = h('p', { class: 'room-made-sub' });
-      const lp = livePanel('함께 시작할 사람', '아직 아무도 없어요. 친구가 대결 코드를 열고 「지금 풀기」를 누르면 같이 시작해요.');
-      put(
-        backBar('대결 대기실'),
-        h('section', { class: 'room-made count-wait' }, h('p', { class: 'room-made-head' }, '⏳ 준비 완료!'), msg, big),
-        lp.el,
-        h('div', { class: 'row center wrap' },
-          h('button', { class: 'btn', onclick: () => { play(ch); top(); } }, '혼자 바로 시작'),
-          h('button', { class: 'btn ghost', onclick: () => intro(ch, {}) }, '준비 취소')));
-      let lastN = null;
-      function step() {
-        const now = nowS();
-        const os = others();
-        // 다른 사람이 이미 정한 시작 시각이 있으면 그걸 따름
-        const gos = os.map((p) => p.presence).filter((x) => (x.st === 'ready') && typeof x.go === 'number' && x.go > now - 3000).map((x) => x.go);
-        if (T == null && gos.length) T = Math.min(...gos);
-        const waiting = os.filter((p) => p.presence.st === 'ready' || p.presence.st === 'idle' || !p.presence.st);
-        if (T == null && waiting.length >= 1 && waiting.every((p) => p.presence.st === 'ready')) {
-          T = Math.max(live && live.pres.rt || now, ...waiting.map((p) => Number(p.presence.rt) || now)) + 5000;
-        }
-        if (T != null && live && live.pres.go !== T) setLive({ go: T });
-        if (T == null) {
-          msg.textContent = waiting.length ? '들어와 있는 사람이 모두 「지금 풀기」를 누르면 5초 뒤에 같이 시작해요.' : '친구를 기다리는 중이에요.';
-          big.textContent = '';
-          return;
-        }
-        const rem = T - now;
-        if (rem <= 0) { play(ch, { synced: true }); top(); return; }
-        const n = Math.ceil(rem / 1000);
-        msg.textContent = '모두 준비됐어요! 곧 시작해요.';
-        if (n !== lastN) { lastN = n; big.textContent = String(Math.min(n, 5)); big.classList.remove('tick'); void big.offsetWidth; big.classList.add('tick'); }
+        cfg.lead ? h('p', { class: 'chal-lead' }, cfg.lead) : null,
+        h('section', { class: 'room-made' }, h('p', { class: 'room-made-head' }, cfg.head), h('p', { class: 'room-made-sub' }, cfg.sub), stats),
+        nickField(def.id + '-set-nick'),
+        h('div', { class: 'row center wrap' }, h('button', { class: 'btn primary big', onclick: () => { play(false); top(); } }, '시작하기'), leaveBtn));
+      if (hasServer()) {
+        App.fire.results(cfg.key).then((rows) => {
+          const all = rankRows(rows, cfg.n);
+          if (all.some((r) => r.me)) { App.store.set(cfg.localKey, { at: Date.now() }); if (stats.isConnected) result(); return; }
+          const avg = all.length ? all.reduce((a, r) => a + r.s.total, 0) / all.length : 0;
+          stats.textContent = all.length ? '지금까지 ' + all.length + '명 참가 · 평균 ' + fmtLong(avg) : '아직 아무도 안 풀었어요. 첫 번째로 풀어 보세요!';
+        }).catch(() => { stats.textContent = ''; });
       }
-      liveHook = () => { lp.paint(); step(); };
-      waitTimer = setInterval(step, 100);
-      step();
     }
-
-    function play(ch, po) {
-      stopSet(); App.clear(wrap);
-      const practice = !!loadRec(ch).mine;
-      connect(ch);
-      if (!practice) setLive({ st: 'play', k: 1, s: 0, n: ch.n, rt: null, go: null });
-      const strip = h('div', { class: 'live-strip', 'aria-live': 'polite' });
-      const paintStrip = () => {
-        App.clear(strip);
-        const os = others().filter((p) => p.presence.st === 'play' || p.presence.st === 'done');
-        os.forEach((p) => strip.append(h('span', { class: 'pill' + (p.presence.st === 'done' ? ' win' : '') }, h('b', null, App.cleanNick(p.presence.nick)), ' ', p.presence.st === 'done' ? '다 풀었어요' : (p.presence.k || 1) + '/' + (p.presence.n || ch.n) + '번 · ' + (p.presence.s || 0) + '개 정답')));
-        strip.hidden = !os.length;
-      };
-      liveHook = paintStrip;
-      paintStrip();
+    function play(practice) {
+      stop(); App.clear(box);
       const body = h('div', { class: 'quick' });
       put(
-        h('div', { class: 'mp-bar' }, h('span', { class: 'bar-label' }, practice ? '다시 풀기 ' : '대결 ', h('b', { class: 'code' }, ch.code)), h('span', { class: 'spacer' }),
-          h('button', { class: 'btn tiny ghost', onclick: () => { if (practice) board(ch); else intro(ch, {}); } }, '그만두기')),
-        practice ? h('p', { class: 'note' }, '이미 푼 대결이라 이번 기록은 순위에 들어가지 않아요.') : null,
-        po && po.synced ? h('p', { class: 'note center-text' }, '🚩 다 같이 시작했어요!') : null,
-        strip,
+        h('div', { class: 'mp-bar' }, h('span', { class: 'bar-label' }, practice ? '다시 풀기 (순위에 안 들어가요)' : cfg.barLabel), h('span', { class: 'spacer' }),
+          h('button', { class: 'btn tiny ghost', onclick: () => (practice ? result() : intro()) }, '그만두기')),
         body);
-      set = problemSet(body, ctx, def, { seeds: seedsOf(ch), opts: ch.opts, label: '문제', onProgress: (round, results) => {
-        if (!practice) setLive({ st: 'play', k: Math.min(round, ch.n), s: results.filter((r) => r.ok).length, n: ch.n });
-      }, onEnd: (results) => {
-        set = null;
-        if (!practice) {
-          const rec = loadRec(ch);
-          rec.mine = { name: myName(), res: decodeEntries(encodeEntries(results), ch.n), at: Date.now() };
-          saveRec(rec);
-          setLive({ st: 'done', res: resultCode(ch, rec.mine), k: null, s: null });
-        }
-        board(ch, practice ? '다시 푼 기록은 저장하지 않았어요.' : '');
-        top();
+      ps = problemSet(body, ctx, def, { seeds: cfg.seeds, opts: cfg.opts, label: '문제', onEnd: async (results) => {
+        ps = null;
+        if (practice) { const m = summarize(results); result('다시 푼 기록: ' + m.solved + '/' + cfg.n + ' 정답 · ' + fmtLong(m.total) + ' (순위에는 처음 기록만 들어가요)'); top(); return; }
+        const r = encodeEntries(results);
+        App.store.set(cfg.localKey, { r, at: Date.now() });
+        App.clear(box); put(h('p', { class: 'note center-text' }, '기록을 저장하는 중…'));
+        if (hasServer()) await App.fire.saveResult(cfg.key, myNick(), r);
+        result(); top();
       } });
     }
-
-    function board(ch, note) {
-      stopSet(); App.clear(wrap);
-      const rec = loadRec(ch);
-      if (!rec.mine) { intro(ch, {}); return; }
-      connect(ch);
-      setLive({ st: 'done', res: resultCode(ch, rec.mine), k: null, s: null, rt: null, go: null });
-      const lp = livePanel('이 대결에 들어와 있는 친구', '');
-      liveHook = lp.paint;
-      if (live) live.onResult = (names) => { if (liveHook === lp.paint) { App.toast('🏁 ' + names.join(', ') + '님 결과가 들어왔어요'); board(ch); } };
-      const rows = ranked(rec);
-      const me = rows.find((r) => r.me);
-      const n = rows.length;
-      const avg = rows.reduce((a, r) => a + r.s.total, 0) / n;
-      const paste = h('textarea', { id: def.id + '-ch-res', class: 'input paste', rows: '2', placeholder: '친구가 보낸 결과 메시지를 통째로 붙여 넣으세요', 'aria-label': '친구 결과 메시지' });
-      const addBtn = h('button', { class: 'btn', onclick: () => {
-        const r = parseAny(paste.value);
-        if (r.ch && r.ch.code === ch.code && !r.result && !r.err) { App.toast('대결 코드예요. 친구가 「내 결과 복사하기」로 보낸 메시지를 붙여 넣어 주세요.', 'warn'); return; }
-        if (!r.ch) { App.toast(r.err, 'warn'); return; }
-        open(paste.value);
-      } }, '순위에 넣기');
+    function result(note) {
+      stop(); App.clear(box);
+      const local = App.store.get(cfg.localKey, null);
+      const mine = local && local.r ? summarize(decodeEntries(local.r, cfg.n) || []) : null;
       put(
-        backBar('대결 결과'),
-        h('div', { class: 'result-box ok' },
-          h('p', { class: 'note' }, def.name + ' · ' + optLabel(def, ch.opts) + ' · ' + ch.n + '문제 · ' + ch.code),
-          h('strong', { class: 'result-big' }, n > 1 ? n + '명 중 ' + me.rank + '등' : me.s.solved + ' / ' + ch.n + ' 정답'),
-          h('p', null, '내 기록 ' + me.s.solved + '/' + ch.n + ' 정답 · 총 ' + fmtLong(me.s.total)),
-          n > 1 ? h('p', { class: 'note' }, (n >= 3 ? '상위 ' + Math.round(me.rank / n * 100) + '% · ' : '') + '참가자 평균 ' + fmtLong(avg))
-            : h('p', { class: 'note' }, '아직 나 혼자예요. 친구가 보낸 결과 메시지를 아래에 붙여 넣으면 순위가 나와요.'),
-          note ? h('p', { class: 'note strong' }, note) : null),
-        lp.el,
-        shareBlock('내 결과 복사하기', resultText(ch, rec.mine)),
-        h('table', { class: 'log rank' },
-          h('thead', null, h('tr', null, ['등수', '이름', '정답', '총 시간', ''].map((x) => h('th', null, x)))),
-          h('tbody', null, rows.map((r) => h('tr', { class: r.me ? 'me' : '' },
-            h('td', null, r.rank), h('td', null, r.name, r.me ? ' (나)' : ''), h('td', null, r.s.solved + '/' + ch.n), h('td', { class: 'mono' }, App.fmtTime(r.s.total)),
-            h('td', null, r.me ? null : h('button', { class: 'btn tiny ghost', 'aria-label': r.name + ' 결과 빼기', onclick: () => { const rc = loadRec(ch); rc.others.splice(r.idx, 1); saveRec(rc); board(ch); } }, '빼기')))))),
-        h('div', { class: 'mode-card' }, h('h4', null, '친구 결과 넣기'), paste, addBtn),
-        h('details', { class: 'chal-detail' }, h('summary', null, '내 문제별 기록'), resultTable(rec.mine.res)),
-        h('div', { class: 'row center wrap' },
-          h('button', { class: 'btn ghost', onclick: () => { intro(ch, {}); top(); } }, '도전장 다시 보내기'),
-          h('button', { class: 'btn ghost', onclick: () => { play(ch); top(); } }, '같은 문제 다시 풀기')));
+        note ? h('p', { class: 'note strong center-text' }, note) : null,
+        hasServer() ? rankBox(cfg.key, cfg.n, { title: cfg.title, share: cfg.share })
+          : h('div', { class: 'result-box ok' }, h('p', { class: 'note' }, cfg.title), mine ? h('strong', { class: 'result-big' }, mine.solved + ' / ' + cfg.n + ' 정답 · ' + fmtLong(mine.total)) : null, h('p', { class: 'note' }, '전체 순위는 온라인에 연결된 사이트에서 볼 수 있어요.')),
+        h('div', { class: 'row center wrap' }, h('button', { class: 'btn ghost', onclick: () => { play(true); top(); } }, '같은 문제 다시 풀기'), leaveBtn));
     }
-
-    const pend = App.store.get('ch.pending', null);
-    if (pend && pend.g === def.id) { App.store.set('ch.pending', null); open(pend.text); } else home();
-    return () => { stopSet(); disconnect(); };
+    intro();
+    return stop;
   }
 
-  // ---------- 온라인 경주 화면 ----------
+  // ---------- 오늘의 문제: 날마다 모두에게 같은 문제, 전체 순위 ----------
+  function kstDay(ms) { const d = new Date(ms + 9 * 3600e3); return { ymd: d.toISOString().slice(0, 10).replace(/-/g, ''), label: (d.getUTCMonth() + 1) + '월 ' + d.getUTCDate() + '일' }; }
+  function hashStr(s) { let x = 2166136261; for (let i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619); } return x >>> 0; }
+  function daily(root, ctx, def) {
+    const wrap = h('div', { class: 'chal' });
+    root.append(wrap);
+    const day = kstDay(netNow());
+    const n = def.dailyCount || 5;
+    const opts = Object.assign({}, def.defaultOpts, def.dailyOpts);
+    const key = 'day-' + def.id + '-' + day.ymd;
+    return setFlow(wrap, ctx, def, {
+      key, seeds: seedsFrom(hashStr(key), n), opts, n, localKey: 'daily.' + key,
+      head: '📅 ' + day.label + ' 오늘의 문제', sub: def.name + ' · ' + optLabel(def, opts) + ' · ' + n + '문제',
+      lead: '오늘 이 문제를 푼 모든 사람과 순위를 겨뤄요. 하루에 첫 기록만 순위에 들어가고, 내일은 새 문제가 나와요.',
+      barLabel: '📅 오늘의 문제', title: day.label + ' 오늘의 문제 · ' + def.name,
+      share: (me, N) => '🧠 [' + def.name + '] ' + day.label + ' 오늘의 문제\n' + N + '명 중 ' + me.rank + '위 (상위 ' + topPct(me.rank, N) + '%) · ' + me.s.solved + '/' + n + ' 정답 · ' + fmtLong(me.s.total) + '\n나도 도전 → ' + SHARE_URL,
+    });
+  }
+
+  // ---------- 온라인 대결 화면 ----------
   function race(root, ctx, def) {
-    const engine = raceEngine(def);
+    const engine = duelEngine(def);
+    const tagEl = (t, c) => h('span', { class: 'chip-tag' + (c ? ' ' + c : '') }, t);
+    const segRow = (label, key, list, W, s, disabled) => [label ? h('span', { class: 'opt-label' }, label) : null,
+      h('div', { class: 'seg small' }, list.map(([v, l]) => h('button', { class: 'seg-btn' + (W.o[key] === v ? ' on' : ''), disabled, onclick: () => s.setOpt(key, v) }, l)))].filter(Boolean);
+
+    // 늦게 온 사람: 방장이 떠난 기록 대결은 서버에 남은 문제 묶음으로 풀기
+    async function lateJoin(code) {
+      if (!hasServer()) return null;
+      const set = await App.fire.getSet((def.id + '-' + code).toLowerCase());
+      if (!set || !set.key || !set.n || set.seed == null) return null;
+      return (leave) => {
+        const box = h('div', { class: 'chal' });
+        const opts = Object.assign({}, def.defaultOpts, set.o);
+        const when = set.at ? new Date(set.at) : null;
+        setFlow(box, ctx, def, {
+          key: set.key, seeds: seedsFrom(set.seed, set.n), opts, n: set.n, localKey: 'rec.' + set.key,
+          head: '📨 방 코드 ' + code + ' 기록 대결', sub: def.name + ' · ' + optLabel(def, opts) + ' · ' + set.n + '문제' + (when ? ' · ' + (when.getMonth() + 1) + '/' + when.getDate() + ' ' + pad2(when.getHours()) + ':' + pad2(when.getMinutes()) + ' 시작' : ''),
+          lead: '방장은 이미 나갔지만, 같은 문제를 풀면 이 대결의 순위에 합쳐져요.',
+          barLabel: '기록 대결 ' + code, title: '방 코드 ' + code + ' 기록 대결 · ' + def.name, leave,
+          share: (me, N) => '🧠 [' + def.name + '] 기록 대결 ' + code + '\n' + N + '명 중 ' + me.rank + '위 · ' + me.s.solved + '/' + set.n + ' 정답 · ' + fmtLong(me.s.total) + '\n같은 문제 풀기: 「' + def.name + '」 → 「온라인 대결」 → 방 코드 ' + code + '\n' + SHARE_URL,
+        });
+        return box;
+      };
+    }
+
+    function progressPills(W, st, me) {
+      const els = W.pl.map((p, i) => {
+        if (i === me) return null;
+        const x = st.st[i];
+        return h('span', { class: 'pill' + (x.d ? ' win' : '') }, h('b', null, p.n), ' ', x.d ? (x.q ? '그만뒀어요' : '다 풀었어요 · ' + x.s + '개 정답') : x.k + '/' + st.n + '번 · ' + x.s + '개 정답');
+      }).filter(Boolean);
+      return els.length ? h('div', { class: 'live-strip', 'aria-live': 'polite' }, els) : null;
+    }
+
+    function renderRec(g, s) {
+      const W = s.W, st = W.s, me = s.mySeat, L = s.local;
+      const gk = W.gn + ':rec';
+      if (L.key !== gk) {
+        if (L.set && L.set.destroy) L.set.destroy();
+        clearInterval(L.cd);
+        Object.assign(L, { key: gk, set: null, fin: null, cd: null, seeds: seedsFrom(st.seed, st.n), wrap: h('div', { class: 'quick' }), setSaved: false, lateBox: null, allBox: null });
+      }
+      // 방장: 나중에 같은 방 코드로 오는 사람을 위해 문제 묶음을 서버에 남김
+      if (s.isHost && st.key && !L.setSaved && hasServer()) { L.setSaved = true; App.fire.putSet((def.id + '-' + s.code).toLowerCase(), st.key, { g: def.id, o: st.o, n: st.n, seed: st.seed }); }
+      g.append(h('div', { class: 'q-head' }, h('span', { class: 'pill strong' }, '기록 대결 · ' + st.n + '문제'), h('span', { class: 'pill' }, optLabel(def, st.o))));
+      // 시작 전 카운트다운
+      if (W.ph !== 'end' && me >= 0 && netNow() < st.go) {
+        const big = h('div', { class: 'count-big', 'aria-live': 'assertive' });
+        g.append(h('section', { class: 'room-made count-wait' }, h('p', { class: 'room-made-head' }, '곧 다 같이 시작해요!'), big));
+        const paint = () => {
+          const rem = st.go - netNow();
+          if (rem <= 0) { clearInterval(L.cd); L.cd = null; s.onUpdate(s); return; }
+          const t = String(Math.min(5, Math.ceil(rem / 1000)));
+          if (big.textContent !== t) { big.textContent = t; big.classList.remove('tick'); void big.offsetWidth; big.classList.add('tick'); }
+        };
+        clearInterval(L.cd); L.cd = setInterval(paint, 100); paint();
+        return;
+      }
+      clearInterval(L.cd); L.cd = null;
+      // 푸는 중
+      if (me >= 0 && !L.fin && !st.st[me].d && W.ph !== 'end') {
+        if (!L.set) {
+          L.set = 'starting';
+          setTimeout(() => {
+            if (s.local !== L || L.key !== gk) return;
+            L.set = problemSet(L.wrap, ctx, def, { seeds: L.seeds, opts: st.o, label: '문제',
+              onProgress: (round, results) => { const ok = results.filter((r) => r.ok).length; setTimeout(() => s.send({ t: 'prog', k: Math.min(round, st.n), s: ok }), 0); },
+              onEnd: (results) => {
+                L.set = null; L.fin = results;
+                const r = encodeEntries(results);
+                s.send({ t: 'fin', r });
+                if (st.key && hasServer()) App.fire.saveResult(st.key, myNick(), r);
+                s.onUpdate(s);
+              } });
+          }, 0);
+        }
+        g.append(progressPills(W, st, me) || '', L.wrap);
+        return;
+      }
+      // 다 풀었거나 끝남: 방 순위
+      const rows = W.pl.map((p, i) => {
+        const x = st.st[i];
+        const res = x.d ? decodeEntries(x.r, st.n) : null;
+        return { i, name: p.n, me: i === me, x, m: res ? summarize(res) : null };
+      });
+      const done = rows.filter((r) => r.m && !r.x.q).sort((a, b) => b.m.solved - a.m.solved || a.m.total - b.m.total);
+      const myRank = done.findIndex((r) => r.me) + 1;
+      if (W.ph !== 'end') g.append(h('p', { class: 'status' }, me >= 0 ? '다 풀었어요! 다른 사람이 끝나기를 기다리는 중…' : '기록 대결이 진행 중이에요.'), progressPills(W, st, me) || '');
+      else g.append(h('div', { class: 'result-box ok' }, h('strong', { class: 'result-big' }, myRank ? done.length + '명 중 ' + myRank + '위' : '기록 대결 끝'), myRank ? h('p', null, '상위 ' + topPct(myRank, done.length) + '% · 내 기록 ' + done[myRank - 1].m.solved + '/' + st.n + ' 정답 · ' + fmtLong(done[myRank - 1].m.total)) : null,
+        done.length ? h('p', { class: 'note' }, '평균 ' + fmtLong(done.reduce((a, r) => a + r.m.total, 0) / done.length)) : null));
+      g.append(h('table', { class: 'log rank' },
+        h('thead', null, h('tr', null, ['순위', '이름', '정답', '총 시간'].map((x) => h('th', null, x)))),
+        h('tbody', null, done.map((r, k) => h('tr', { class: r.me ? 'me' : '' }, h('td', null, k + 1), h('td', null, r.name, r.me ? ' (나)' : ''), h('td', null, r.m.solved + '/' + st.n), h('td', { class: 'mono' }, App.fmtTime(r.m.total)))),
+          rows.filter((r) => !r.m || r.x.q).map((r) => h('tr', null, h('td', null, '-'), h('td', null, r.name), h('td', { colspan: '2' }, r.x.q ? '그만뒀어요' : '푸는 중 ' + r.x.k + '/' + st.n + '번'))))));
+      // 나중에 푼 사람까지 합친 순위
+      if (W.ph === 'end' && st.key && hasServer() && me >= 0) {
+        if (!L.allBox) {
+          L.allBox = h('div', { class: 'all-rank' });
+          L.allBox.append(h('button', { class: 'btn ghost', onclick: () => { App.clear(L.allBox); L.allBox.append(rankBox(st.key, st.n, { title: '방 코드 ' + s.code + ' 기록 대결 · 나중에 푼 사람 포함 (컴퓨터 제외)' })); } }, '나중에 푼 사람까지 합친 순위 보기'),
+            h('p', { class: 'note center-text' }, '친구에게 방 코드 ' + s.code + '를 알려 주면, 나중에 「참가하기」로 같은 문제를 풀고 이 순위에 들어올 수 있어요.'));
+        }
+        g.append(L.allBox);
+      }
+      // 자리가 없어 보기만 하는 사람: 같은 문제를 따로 풀고 순위에 합치기
+      if (me < 0 && st.key && hasServer()) {
+        if (!L.lateBox) {
+          L.lateBox = h('div', { class: 'chal' });
+          setFlow(L.lateBox, ctx, def, { key: st.key, seeds: L.seeds, opts: st.o, n: st.n, localKey: 'rec.' + st.key,
+            head: '나도 같은 문제 풀기', sub: optLabel(def, st.o) + ' · ' + st.n + '문제', barLabel: '기록 대결 ' + s.code, title: '방 코드 ' + s.code + ' 기록 대결 · ' + def.name });
+        }
+        g.append(L.lateBox);
+      }
+    }
+
+    function renderFast(g, s) {
+      const W = s.W, st = W.s, me = s.mySeat;
+      const names = W.pl.map((p) => p.n);
+      const L = s.local;
+      const key = W.gn + ':' + st.round;
+      if (L.key !== key) {
+        if (L.comp && L.comp.destroy) L.comp.destroy();
+        L.key = key;
+        L.pz = puzzleOf(def, st.seed, st.o);
+        App.quick.lastPuzzle = L.pz; // 점검용
+        L.sentDone = false;
+        L.comp = def.mount(L.pz, { done: () => { if (!L.sentDone && me >= 0) { L.sentDone = true; s.send({ t: 'done' }); } }, locked: () => false, solo: false });
+        L.revealed = false;
+      }
+      const team = st.team;
+      const tp = [0, 0];
+      if (team) st.pts.forEach((p, i) => { tp[st.tm[i]] += p; });
+      const lockRem = me >= 0 ? st.lockRem[me] - (Date.now() - s.receivedAt) : 0;
+      g.append(h('div', { class: 'q-head' },
+        h('span', { class: 'pill strong' }, st.ph === 'end' ? '대결 끝' : '라운드 ' + st.round + ' / ' + st.rounds),
+        team ? [0, 1].map((t) => h('span', { class: 'pill team-pill t' + t }, TEAMS[t] + ' ', h('b', { class: 'mono' }, String(tp[t])))) : null,
+        W.pl.map((p, i) => h('span', { class: 'pill' + (i === me ? ' me' : '') + (st.win === i && st.ph !== 'play' ? ' win' : '') },
+          h('span', { class: 'seat-dot' + (team ? ' t' + st.tm[i] : ''), style: team ? null : { background: `var(--p${i})` } }), p.n, ' ', h('b', { class: 'mono' }, String(st.pts[i])),
+          st.lockRem[i] > 0 && st.ph === 'play' ? h('span', { class: 'chip-tag warn' }, '잠김') : null))));
+      if (st.ph === 'play') {
+        if (def.prompt) g.append(def.prompt(L.pz));
+        g.append(L.comp.el);
+        if (me >= 0) {
+          if (def.kind === 'number') {
+            const locked = lockRem > 0;
+            if (!L.row || L.rowKey !== key) {
+              L.rowKey = key;
+              L.row = answerRow(def.id + '-race-ans', (v) => s.send({ t: 'ans', v }), false);
+              L.focused = false;
+              L.row.inp.addEventListener('focus', () => { L.focused = true; });
+              L.row.inp.addEventListener('blur', () => { if (L.row.inp.isConnected) L.focused = false; });
+            }
+            const row = L.row;
+            row.inp.disabled = locked || s.waiting;
+            row.btn.disabled = locked || s.waiting;
+            g.append(row.el);
+            if (L.focused && !row.inp.disabled) setTimeout(() => { try { row.inp.focus({ preventScroll: true }); } catch (e) { /* 무시 */ } }, 0);
+            if (locked) {
+              g.append(h('p', { class: 'status' }, '틀렸어요. ', h('b', { 'data-until': String(Date.now() + lockRem) }, Math.ceil(lockRem / 1000) + '초'), ' 동안 답할 수 없어요.'));
+              clearTimeout(L.unlockT);
+              L.unlockT = setTimeout(() => s.onUpdate(s), lockRem + 80);
+            } else g.append(h('p', { class: 'status' }, s.waiting ? '확인하는 중…' : team ? '우리 팀 누구든 먼저 맞히면 팀에 1점! 틀리면 나만 20초 동안 답할 수 없어요.' : '먼저 맞히는 사람이 1점! 틀리면 20초 동안 답할 수 없어요.'));
+          } else {
+            g.append(h('p', { class: 'status' }, L.sentDone ? '완성! 확인하는 중…' : team ? '우리 팀 누구든 먼저 완성하면 팀에 1점!' : '가장 먼저 완성하는 사람이 1점!'));
+          }
+        }
+        if (st.last && st.last[0] !== me) g.append(h('p', { class: 'note' }, names[st.last[0]] + '이(가) ' + st.last[1] + '(으)로 답했다가 틀렸어요.'));
+      } else {
+        if (!L.revealed && L.comp.reveal) { L.comp.reveal(); L.revealed = true; }
+        const winTeam = st.win >= 0 && team ? st.tm[st.win] : -1;
+        const title = st.win >= 0 ? (st.win === me ? '내가 먼저 맞혔어요!' : names[st.win] + ' 득점') + (team ? ' (' + TEAMS[winTeam] + ' +1)' : '') : '아무도 못 맞혔어요';
+        g.append(h('div', { class: 'result-box' + (st.win === me || (team && me >= 0 && winTeam === st.tm[me]) ? ' ok' : '') },
+          h('strong', { class: 'result-big' }, st.ph === 'end' ? rankText(st, names, me) : title),
+          st.ph === 'end' ? h('p', null, (team ? TEAMS[0] + ' ' + tp[0] + '점 · ' + TEAMS[1] + ' ' + tp[1] + '점 — ' : '') + W.pl.map((p, i) => p.n + ' ' + st.pts[i] + '점').join(' · ')) : h('p', { class: 'note' }, '다음 라운드가 곧 시작돼요.'),
+          def.explainHasBoard ? null : L.comp.el,
+          def.explain(L.pz)));
+      }
+    }
+
     return App.multi.mount(root, ctx, {
       gameId: def.id,
       engine,
-      soloLabel: '컴퓨터와 경주',
+      soloLabel: '컴퓨터와 대결',
       renderOptions(o, s, disabled) {
+        const W = s.W, mode = W.o.mode === 'rec' ? 'rec' : 'fast';
+        o.append(h('div', { class: 'toolbar' }, segRow('방식', 'mode', [['fast', '⚡ 빨리 맞히기'], ['rec', '⏱ 기록 대결']], W, s, disabled)),
+          h('p', { class: 'note mode-note' }, mode === 'fast'
+            ? '모두 같은 문제를 동시에 보고, 먼저 맞힌 사람이 1점을 얻어요. 팀전으로 하면 같은 팀 누가 맞혀도 팀 점수예요. 틀리면 20초 동안 답할 수 없어요.'
+            : '같은 문제 묶음을 각자 끝까지 풀어요. 5초 카운트다운 뒤 다 같이 시작하고, 맞힌 문제 수와 총 시간으로 순위를 정해요. 나중에 같은 방 코드로 들어온 사람도 같은 문제를 풀고 순위에 합쳐져요.'));
         const bar = h('div', { class: 'toolbar' });
-        def.optionsUI(bar, s.W.o, (k, v) => s.setOpt(k, v), disabled);
-        bar.append(h('span', { class: 'opt-label' }, '라운드'),
-          h('div', { class: 'seg small' }, [3, 5, 7].map((n) => h('button', { class: 'seg-btn' + (s.W.o.rounds === n ? ' on' : ''), disabled, onclick: () => s.setOpt('rounds', n) }, n + '판'))));
+        def.optionsUI(bar, W.o, (k, v) => s.setOpt(k, v), disabled);
+        if (mode === 'fast') bar.append(...segRow('라운드', 'rounds', [[3, '3판'], [5, '5판'], [7, '7판']], W, s, disabled), ...segRow('', 'team', [[0, '개인전'], [1, '팀전']], W, s, disabled));
+        else bar.append(...segRow('문제 수', 'count', [[3, '3문제'], [5, '5문제'], [7, '7문제']], W, s, disabled));
         o.append(bar);
+        if (mode === 'fast' && W.o.team && !disabled) o.append(h('div', { class: 'row wrap' }, h('button', { class: 'btn tiny', onclick: () => s.autoTeams() }, '🎲 팀 자동 나누기'), h('span', { class: 'note' }, '자리 칸의 팀 이름을 누르면 팀을 바꿀 수 있어요.')));
       },
-      renderGame(g, s) {
-        const W = s.W, st = W.s, me = s.mySeat;
-        const names = W.pl.map((p) => p.n);
-        const L = s.local;
-        const key = W.gn + ':' + st.round;
-        if (L.key !== key) {
-          if (L.comp && L.comp.destroy) L.comp.destroy();
-          L.key = key;
-          L.pz = puzzleOf(def, st.seed, st.o);
-          App.quick.lastPuzzle = L.pz; // 점검용
-          L.sentDone = false;
-          L.comp = def.mount(L.pz, { done: () => { if (!L.sentDone && me >= 0) { L.sentDone = true; s.send({ t: 'done' }); } }, locked: () => false, solo: false });
-          L.revealed = false;
-        }
-        const lockRem = me >= 0 ? st.lockRem[me] - (Date.now() - s.receivedAt) : 0;
-        g.append(h('div', { class: 'q-head' },
-          h('span', { class: 'pill strong' }, st.ph === 'end' ? '경주 종료' : '라운드 ' + st.round + ' / ' + st.rounds),
-          W.pl.map((p, i) => h('span', { class: 'pill' + (i === me ? ' me' : '') + (st.win === i && st.ph !== 'play' ? ' win' : '') },
-            h('span', { class: 'seat-dot', style: { background: `var(--p${i})` } }), p.n, ' ', h('b', { class: 'mono' }, String(st.pts[i])),
-            st.lockRem[i] > 0 && st.ph === 'play' ? h('span', { class: 'chip-tag warn' }, '잠김') : null))));
-        if (st.ph === 'play') {
-          if (def.prompt) g.append(def.prompt(L.pz));
-          g.append(L.comp.el);
-          if (me >= 0) {
-            if (def.kind === 'number') {
-              const locked = lockRem > 0;
-              if (!L.row || L.rowKey !== key) {
-                L.rowKey = key;
-                L.row = answerRow(def.id + '-race-ans', (v) => s.send({ t: 'ans', v }), false);
-                L.focused = false;
-                L.row.inp.addEventListener('focus', () => { L.focused = true; });
-                L.row.inp.addEventListener('blur', () => { if (L.row.inp.isConnected) L.focused = false; });
-              }
-              const row = L.row;
-              row.inp.disabled = locked || s.waiting;
-              row.btn.disabled = locked || s.waiting;
-              g.append(row.el);
-              if (L.focused && !row.inp.disabled) setTimeout(() => { try { row.inp.focus({ preventScroll: true }); } catch (e) { /* 무시 */ } }, 0);
-              if (locked) {
-                g.append(h('p', { class: 'status' }, '틀렸어요. ', h('b', { 'data-until': String(Date.now() + lockRem) }, Math.ceil(lockRem / 1000) + '초'), ' 동안 답할 수 없어요.'));
-                clearTimeout(L.unlockT);
-                L.unlockT = setTimeout(() => s.onUpdate(s), lockRem + 80);
-              } else g.append(h('p', { class: 'status' }, s.waiting ? '확인하는 중…' : '먼저 맞히는 사람이 1점! 틀리면 20초 동안 답할 수 없어요.'));
-            } else {
-              g.append(h('p', { class: 'status' }, L.sentDone ? '완성! 확인하는 중…' : '가장 먼저 완성하는 사람이 1점!'));
-            }
-          }
-          if (st.last && st.last[0] !== me) g.append(h('p', { class: 'note' }, names[st.last[0]] + '이(가) ' + st.last[1] + '(으)로 답했다가 틀렸어요.'));
-        } else {
-          if (!L.revealed && L.comp.reveal) { L.comp.reveal(); L.revealed = true; }
-          const title = st.win >= 0 ? (st.win === me ? '내가 먼저 맞혔어요!' : names[st.win] + ' 득점') : '아무도 못 맞혔어요';
-          g.append(h('div', { class: 'result-box' + (st.win === me ? ' ok' : '') },
-            h('strong', { class: 'result-big' }, st.ph === 'end' ? rankText(st, names, me) : title),
-            st.ph === 'end' ? h('p', null, W.pl.map((p, i) => p.n + ' ' + st.pts[i] + '점').join(' · ')) : h('p', { class: 'note' }, '다음 라운드가 곧 시작돼요.'),
-            def.explainHasBoard ? null : L.comp.el,
-            def.explain(L.pz)));
-        }
+      seatExtra(s, i, p) {
+        const W = s.W;
+        if (W.o.mode === 'rec' || !W.o.team) return null;
+        const t = p.tm ? 1 : 0;
+        if (s.isHost && W.ph === 'lobby') return h('button', { class: 'btn tiny team-btn t' + t, onclick: () => s.setSeatProp(i, 'tm', 1 - t), 'aria-label': p.n + ' 팀 바꾸기 (지금 ' + TEAMS[t] + ')' }, TEAMS[t] + ' ⇄');
+        return tagEl(TEAMS[t], 'team-tag t' + t);
       },
+      lateJoin,
+      renderGame(g, s) { if (s.W.s && s.W.s.mode === 'rec') renderRec(g, s); else renderFast(g, s); },
     });
   }
 
   function rankText(st, names, me) {
+    if (st.team) {
+      const tp = [0, 0];
+      st.pts.forEach((p, i) => { tp[st.tm[i]] += p; });
+      if (tp[0] === tp[1]) return '무승부!';
+      const w = tp[0] > tp[1] ? 0 : 1;
+      return TEAMS[w] + ' 승리' + (me >= 0 && st.tm[me] === w ? '! 🎉' : '');
+    }
     const best = Math.max(...st.pts);
     const winners = st.pts.map((p, i) => (p === best ? i : -1)).filter((i) => i >= 0);
     if (winners.length > 1) return '공동 1위: ' + winners.map((i) => names[i]).join(', ');
@@ -2632,9 +2638,8 @@ tr.me td { background: var(--accent-soft); }
   // ---------- 등록 ----------
   App.quick = {
     register(def) {
-      byPrefix[prefixOf(def)] = def;
       App.games.push({
-        id: def.id, name: def.name, kicker: def.kicker, players: '혼자 · 대결 코드 · 온라인 경주', blurb: def.blurb, rules: def.rules, guide: def.guide,
+        id: def.id, name: def.name, kicker: def.kicker, players: '혼자 · 오늘의 문제 · 온라인 대결', blurb: def.blurb, rules: def.rules, guide: def.guide,
         mount(root, ctx) {
           const tabs = h('div', { class: 'seg', role: 'tablist' });
           const body = h('div');
@@ -2643,17 +2648,16 @@ tr.me td { background: var(--accent-soft); }
           function setMode(m) {
             if (cleanup) cleanup();
             App.clear(body); App.clear(tabs);
-            [['solo', '혼자 연습'], ['chal', '대결 코드'], ['race', '온라인 경주']].forEach(([id, label]) => tabs.append(h('button', { class: 'seg-btn' + (m === id ? ' on' : ''), role: 'tab', 'aria-selected': m === id ? 'true' : 'false', onclick: () => setMode(id) }, label)));
-            cleanup = m === 'solo' ? solo(body, ctx, def) : m === 'chal' ? challenge(body, ctx, def) : race(body, ctx, def);
+            [['solo', '혼자 연습'], ['daily', '오늘의 문제'], ['race', '온라인 대결']].forEach(([id, label]) => tabs.append(h('button', { class: 'seg-btn' + (m === id ? ' on' : ''), role: 'tab', 'aria-selected': m === id ? 'true' : 'false', onclick: () => setMode(id) }, label)));
+            cleanup = m === 'solo' ? solo(body, ctx, def) : m === 'daily' ? daily(body, ctx, def) : race(body, ctx, def);
           }
-          const pend = App.store.get('ch.pending', null);
-          setMode(pend && pend.g === def.id ? 'chal' : 'solo');
+          setMode('solo');
           return () => { if (cleanup) cleanup(); };
         },
       });
     },
-    srng, newSeed, puzzleOf, raceEngine,
-    ch: { makeCode, parseChallenge, parseAny, seedsOf, resultCode, encodeEntries, decodeEntries, domainsOf, optLabel, ranked, defs: byPrefix },
+    srng, newSeed, puzzleOf, duelEngine, raceEngine: duelEngine,
+    tools: { encodeEntries, decodeEntries, summarize, rankRows, kstDay, seedsFrom, hashStr, optLabel },
   };
 })();
 
@@ -4856,8 +4860,14 @@ tr.me td { background: var(--accent-soft); }
 </ul>
 <h4>혼자 연습</h4>
 <p>5문제를 풉니다. 틀리면 5초 동안 답할 수 없습니다. 문제마다 걸린 시간이 기록되고, 끝나면 정답 네모를 하나씩 확인할 수 있습니다.</p>
-<h4>온라인 경주</h4>
-<p>모두 같은 판을 동시에 봅니다. 가장 먼저 맞힌 사람이 1점을 얻고, 틀리면 그 라운드에서 20초 동안 답할 수 없습니다. 정한 라운드 수가 끝나면 점수가 가장 높은 사람이 이깁니다.</p>`,
+<h4>오늘의 문제</h4>
+<p>날마다 모든 사람에게 같은 5문제가 나옵니다. 다 풀면 오늘 푼 사람 중 몇 위인지(상위 몇 %인지)와 평균 시간을 보여 줍니다. 하루에 첫 기록만 순위에 들어가고, 날짜가 바뀌면 새 문제가 나옵니다.</p>
+<h4>온라인 대결</h4>
+<p>방을 만들 때 방식을 고릅니다. 친구는 같은 게임의 「참가하기」에 방 코드 4자리를 넣으면 들어옵니다. 빈자리는 컴퓨터로 채울 수 있어요.</p>
+<ul>
+<li><b>빨리 맞히기</b>: 모두 같은 판을 동시에 봅니다. 가장 먼저 맞힌 사람이 1점을 얻고, 틀리면 그 라운드에서 20초 동안 답할 수 없습니다. 정한 라운드가 끝나면 점수가 가장 높은 사람이 이깁니다. <b>팀전</b>으로 하면 같은 팀 누가 맞혀도 팀 점수가 됩니다.</li>
+<li><b>기록 대결</b>: 같은 문제 묶음을 5초 카운트다운 뒤 다 같이 시작해서 각자 끝까지 풉니다. 맞힌 문제가 많은 순, 같으면 총 시간이 짧은 순으로 순위를 정합니다. 푸는 동안 다른 사람이 몇 번 문제를 풀고 있는지 보이고, 나중에 같은 방 코드로 들어온 사람도 같은 문제를 풀고 순위에 합쳐집니다.</li>
+</ul>`,
     guide: `
 <h4>1. 왼쪽 위 꼭짓점을 기준으로 빠짐없이 세기</h4>
 <p>가장 흔한 실수는 같은 네모를 두 번 세거나 하나를 빠뜨리는 것입니다. 칸을 왼쪽 위부터 차례로 짚으며 “이 칸을 <b>왼쪽 위 꼭짓점</b>으로 하는 네모”만 셉니다. 그 칸에서 오른쪽으로 한 칸씩, 아래로 한 줄씩 넓혀 가며 합을 확인하면 모든 네모를 정확히 한 번씩 보게 됩니다.</p>
@@ -5125,8 +5135,16 @@ tr.me td { background: var(--accent-soft); }
 <li>모든 기둥의 맨 윗면은 처음 보이는 각도에서도 보이도록 만들어집니다.</li>
 <li><b>빈 곳 세기</b> 문제는 정해진 크기의 상자를 꽉 채우려면 몇 개가 더 필요한지 묻습니다.</li>
 </ul>
-<h4>혼자 연습 / 온라인 경주</h4>
-<p>혼자서는 5문제의 시간을 잽니다(오답은 5초 잠금). 온라인에서는 같은 그림을 보고 가장 먼저 맞힌 사람이 1점을 얻고, 틀리면 20초 동안 답할 수 없습니다.</p>`,
+<h4>혼자 연습</h4>
+<p>5문제의 시간을 잽니다. 틀리면 5초 동안 답할 수 없습니다.</p>
+<h4>오늘의 문제</h4>
+<p>날마다 모든 사람에게 같은 5문제가 나옵니다. 다 풀면 오늘 푼 사람 중 몇 위인지(상위 몇 %인지)와 평균 시간을 보여 줍니다. 하루에 첫 기록만 순위에 들어가고, 날짜가 바뀌면 새 문제가 나옵니다.</p>
+<h4>온라인 대결</h4>
+<p>방을 만들 때 방식을 고릅니다. 친구는 같은 게임의 「참가하기」에 방 코드 4자리를 넣으면 들어옵니다. 빈자리는 컴퓨터로 채울 수 있어요.</p>
+<ul>
+<li><b>빨리 맞히기</b>: 같은 그림을 보고 가장 먼저 맞힌 사람이 1점을 얻고, 틀리면 20초 동안 답할 수 없습니다. 정한 라운드가 끝나면 점수가 가장 높은 사람이 이깁니다. <b>팀전</b>으로 하면 같은 팀 누가 맞혀도 팀 점수가 됩니다.</li>
+<li><b>기록 대결</b>: 같은 문제 묶음을 5초 카운트다운 뒤 다 같이 시작해서 각자 끝까지 풉니다. 맞힌 문제가 많은 순, 같으면 총 시간이 짧은 순으로 순위를 정합니다. 푸는 동안 다른 사람이 몇 번 문제를 풀고 있는지 보이고, 나중에 같은 방 코드로 들어온 사람도 같은 문제를 풀고 순위에 합쳐집니다.</li>
+</ul>`,
     guide: `
 <h4>1. 큐브가 아니라 “기둥”을 센다</h4>
 <p>공중에 뜬 큐브가 없으므로, 윗면 하나는 곧 바닥까지 이어진 기둥 하나입니다. 그림을 위에서 내려다본다고 생각하고 칸마다 기둥 높이를 읽은 뒤 더하면 됩니다. 해설 화면의 높이 지도가 바로 이 방법입니다.</p>
@@ -5549,8 +5567,16 @@ tr.me td { background: var(--accent-soft); }
 <li>대칭축은 세로, 가로, 대각선 어느 방향이어도 됩니다. 안쪽에 구멍이 생겨도 대칭이면 괜찮습니다.</li>
 <li>조각을 고른 뒤 판의 칸을 누르면 놓이고, 놓인 조각을 누르면 다시 들립니다.</li>
 </ul>
-<h4>혼자 연습 / 온라인 경주</h4>
-<p>혼자서는 5문제의 시간을 잽니다. 온라인에서는 모두 같은 조각을 받고, 가장 먼저 완성한 사람이 1점을 얻습니다.</p>`,
+<h4>혼자 연습</h4>
+<p>5문제의 시간을 잽니다.</p>
+<h4>오늘의 문제</h4>
+<p>날마다 모든 사람에게 같은 5문제가 나옵니다. 다 풀면 오늘 푼 사람 중 몇 위인지(상위 몇 %인지)와 평균 시간을 보여 줍니다. 하루에 첫 기록만 순위에 들어가고, 날짜가 바뀌면 새 문제가 나옵니다.</p>
+<h4>온라인 대결</h4>
+<p>방을 만들 때 방식을 고릅니다. 친구는 같은 게임의 「참가하기」에 방 코드 4자리를 넣으면 들어옵니다. 빈자리는 컴퓨터로 채울 수 있어요.</p>
+<ul>
+<li><b>빨리 맞히기</b>: 모두 같은 조각을 받고, 가장 먼저 완성한 사람이 1점을 얻습니다. 정한 라운드가 끝나면 점수가 가장 높은 사람이 이깁니다. <b>팀전</b>으로 하면 같은 팀 누가 맞혀도 팀 점수가 됩니다.</li>
+<li><b>기록 대결</b>: 같은 문제 묶음을 5초 카운트다운 뒤 다 같이 시작해서 각자 끝까지 풉니다. 맞힌 문제가 많은 순, 같으면 총 시간이 짧은 순으로 순위를 정합니다. 푸는 동안 다른 사람이 몇 번 문제를 풀고 있는지 보이고, 나중에 같은 방 코드로 들어온 사람도 같은 문제를 풀고 순위에 합쳐집니다.</li>
+</ul>`,
     guide: `
 <h4>1. 칸 수부터 세기</h4>
 <p>모든 조각의 칸 수를 더하세요. 세로축 대칭이라면 축 위에 걸치는 칸을 빼고 나머지는 좌우로 짝을 이뤄야 합니다. 전체 칸 수가 홀수라면 축 위에 놓이는 칸(한가운데 줄)이 반드시 있어야 합니다.</p>
@@ -6743,9 +6769,22 @@ tr.me td { background: var(--accent-soft); }
     }
     const progRow = h('div', { class: 'progs' }, h('span', { class: 'progs-label' }, '프로그램별 게임'),
       PROGRAMS.map((p) => (chips[p.id] = h('button', { class: 'prog-chip', type: 'button', 'aria-expanded': 'false', 'aria-controls': 'prog-' + p.id, onclick: () => toggle(p.id) }, p.label, h('span', { class: 'caret', 'aria-hidden': 'true' }, '▾')))));
+    // 동시 접속자 (Firebase 판에서만): 무료 요금제는 동시에 100명까지 연결돼요
+    const onlineEl = h('p', { class: 'online-count', hidden: true, 'aria-live': 'polite' });
+    if (App.fire && App.fire.enabled()) {
+      main._cleanup = App.fire.onCount((n) => {
+        if (n == null) { onlineEl.hidden = true; return; }
+        const lim = App.fire.limit;
+        onlineEl.hidden = false;
+        onlineEl.classList.toggle('full', n >= lim * 0.9);
+        onlineEl.textContent = '';
+        onlineEl.append(h('span', { class: 'dot', 'aria-hidden': 'true' }), '동시 접속자 ', h('b', null, String(n)), ' / ' + lim, n >= lim * 0.9 ? ' · 곧 가득 차요' : '');
+      });
+    }
     const hero = h('section', { class: 'hero' },
       h('h1', { class: 'title sr-only' }, '두뇌 서바이벌에 내가 참가한다면?'),
       h('p', { class: 'eyebrow' }, '두뇌 서바이벌 게임 ' + (['', '한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열', '열한', '열두', '열세', '열네', '열다섯'][App.games.length] || App.games.length) + ' 가지'),
+      onlineEl,
       h('p', { class: 'lede' }, '서바이벌 예능에서 본 두뇌 게임의 규칙을 바탕으로 만든 웹 버전입니다. 퍼즐은 매번 새 문제가 만들어지고, 여러 명이 하는 게임은 방 코드로 친구와 동시에 접속해 즐길 수 있어요.'),
       h('ul', { class: 'how' },
         h('li', null, h('b', null, '혼자'), ' 퍼즐은 크기·숫자·배치가 매번 달라요'),
@@ -6858,8 +6897,9 @@ tr.me td { background: var(--accent-soft); }
       root.append(v.el);
       current = { id: g.id, cleanup: v.cleanup };
     } else {
-      root.append(homeView(prog && prog.id));
-      current = { id: want, cleanup: null };
+      const hv = homeView(prog && prog.id);
+      root.append(hv);
+      current = { id: want, cleanup: hv._cleanup || null };
     }
     window.scrollTo(0, 0);
   }

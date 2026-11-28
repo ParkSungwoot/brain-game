@@ -16,7 +16,7 @@
 <meta name="theme-color" content="#120f0c">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%A0%3C/text%3E%3C/svg%3E">
 <style>:root{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}body{margin:0;font:14px system-ui;background:#120f0c}img{max-width:100%}[hidden]{display:none!important}</style>
-<script>window.App = Object.assign(window.App || {}, {"FIREBASE":{"apiKey":"AIzaSyDxivjcRok5ssmYc5qlNDMTLQFahiirfAo","authDomain":"psw-brain-survival.firebaseapp.com","databaseURL":"https://psw-brain-survival-default-rtdb.asia-southeast1.firebasedatabase.app","projectId":"psw-brain-survival","storageBucket":"psw-brain-survival.firebasestorage.app","messagingSenderId":"358375461873","appId":"1:358375461873:web:2a0a47ee8a795a2dfe2a50"},"FB_SRC":"fb.js","SHARE_URL":"https://parksungwoot.github.io/brain-game/"});</script>
+<script>window.App = Object.assign(window.App || {}, {"FIREBASE":{"apiKey":"AIzaSyDxivjcRok5ssmYc5qlNDMTLQFahiirfAo","authDomain":"psw-brain-survival.firebaseapp.com","databaseURL":"https://psw-brain-survival-default-rtdb.asia-southeast1.firebasedatabase.app","projectId":"psw-brain-survival","storageBucket":"psw-brain-survival.firebasestorage.app","messagingSenderId":"358375461873","appId":"1:358375461873:web:2a0a47ee8a795a2dfe2a50"},"FB_SRC":"fb.js","SHARE_URL":"https://parksungwoot.github.io/brain-game/","BUILD":"ac35fce399"});</script>
 </head>
 <body>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -9508,6 +9508,22 @@ tr.me td { background: var(--accent-soft); }
     }
     window.scrollTo(0, 0);
   }
+
+  // 새 판 확인: 브라우저(특히 카카오톡 안 브라우저)가 예전 페이지를 들고 있으면, 처음 열 때나 첫 화면으로 돌아올 때 한 번 새로 불러옴
+  // 게임 화면에서는 하지 않음 (하던 게임이 끊기지 않게)
+  function checkUpdate() {
+    if (!App.BUILD || typeof fetch !== 'function') return;
+    if (current && !String(current.id).startsWith('home')) return;
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (!j || !j.v || j.v === App.BUILD) return;
+      if (current && !String(current.id).startsWith('home')) return;
+      const k = 'reloaded-' + j.v;
+      try { if (sessionStorage.getItem(k)) return; sessionStorage.setItem(k, '1'); } catch (e) { return; }
+      location.replace(location.pathname + '?v=' + j.v + location.hash);
+    }).catch(() => {});
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); });
+  setTimeout(checkUpdate, 0);
 
   window.addEventListener('hashchange', route);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', route); else route();

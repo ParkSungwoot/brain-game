@@ -16,7 +16,7 @@
 <meta name="theme-color" content="#120f0c">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%A0%3C/text%3E%3C/svg%3E">
 <style>:root{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}body{margin:0;font:14px system-ui;background:#120f0c}img{max-width:100%}[hidden]{display:none!important}</style>
-<script>window.App = Object.assign(window.App || {}, {"FIREBASE":{"apiKey":"AIzaSyDxivjcRok5ssmYc5qlNDMTLQFahiirfAo","authDomain":"psw-brain-survival.firebaseapp.com","databaseURL":"https://psw-brain-survival-default-rtdb.asia-southeast1.firebasedatabase.app","projectId":"psw-brain-survival","storageBucket":"psw-brain-survival.firebasestorage.app","messagingSenderId":"358375461873","appId":"1:358375461873:web:2a0a47ee8a795a2dfe2a50"},"FB_SRC":"fb.js","SHARE_URL":"https://parksungwoot.github.io/brain-game/","BUILD":"ac35fce399"});</script>
+<script>window.App = Object.assign(window.App || {}, {"FIREBASE":{"apiKey":"AIzaSyDxivjcRok5ssmYc5qlNDMTLQFahiirfAo","authDomain":"psw-brain-survival.firebaseapp.com","databaseURL":"https://psw-brain-survival-default-rtdb.asia-southeast1.firebasedatabase.app","projectId":"psw-brain-survival","storageBucket":"psw-brain-survival.firebasestorage.app","messagingSenderId":"358375461873","appId":"1:358375461873:web:2a0a47ee8a795a2dfe2a50"},"FB_SRC":"fb.js","SHARE_URL":"https://parksungwoot.github.io/brain-game/","BUILD":"2ecc78989a"});</script>
 </head>
 <body>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -3101,8 +3101,10 @@ tr.me td { background: var(--accent-soft); }
         const ids = W.pl.map((p) => p.p);
         const fresh = new Set(prev ? ids.filter((x, i) => i > 0 && !prev.ids.includes(x)) : []);
         if (prev && W.ph === 'lobby' && s.mode !== 'local') {
-          W.pl.forEach((p, i) => { if (fresh.has(p.p) && !p.b && i !== s.mySeat) App.toast('🙋 ' + p.n + '님이 들어왔어요'); });
-          prev.pl.forEach(([pid, n, b], i) => { if (i > 0 && !b && !ids.includes(pid)) App.toast(n + '님이 나갔어요'); });
+          // 알림은 화면을 다 그린 뒤에 (그리는 도중 띄우면 화면이 잠깐 비어 맨 위로 튀어 오름)
+          const later = (t) => setTimeout(() => App.toast(t), 0);
+          W.pl.forEach((p, i) => { if (fresh.has(p.p) && !p.b && i !== s.mySeat) later('🙋 ' + p.n + '님이 들어왔어요'); });
+          prev.pl.forEach(([pid, n, b], i) => { if (i > 0 && !b && !ids.includes(pid)) later(n + '님이 나갔어요'); });
         }
         s._seatSeen = { ids, pl: W.pl.map((p) => [p.p, p.n, p.b]) };
         const tag = (t, c) => h('span', { class: 'chip-tag' + (c ? ' ' + c : '') }, t);
@@ -8400,7 +8402,7 @@ tr.me td { background: var(--accent-soft); }
     g.append(h('div', { class: 'wl-head' },
       st.seats.map((i) => h('span', { class: 'wl-player' + (st.turn === i && (st.ph === 'place' || st.ph === 'move') ? ' turn' : '') + (i === me ? ' me' : '') },
         App.avatar.seat(W, i), seatName(names, i, me),
-        h('b', { class: 'wl-score' }, String(sc.area[i])),
+        h('b', { class: 'wl-score' }, st.ph === 'place' ? '–' : String(sc.area[i])), // 말을 놓는 동안에는 영역을 세지 않음
         st.rnd === 1 ? h('span', { class: 'chip-tag' + (st.brk[i] ? '' : ' used') }, st.brk[i] ? '💥 1' : '💥 0') : null,
         st.turn === i && (st.ph === 'place' || st.ph === 'move') ? h('span', { class: 'timer', 'data-timer-seat': i }) : null)),
       st.n === 3 && st.rnd === 2 && st.r1 ? h('span', { class: 'wl-player done' }, App.avatar.seat(W, st.r1.rank[0]), seatName(names, st.r1.rank[0], me) + ' · 생존 확정') : null));
@@ -8445,7 +8447,8 @@ tr.me td { background: var(--accent-soft); }
         let owner = null;
         st.pc.forEach((list, sIdx) => list.forEach((p, i) => { if (p[0] === r && p[1] === c) owner = [sIdx, i, p[2]]; }));
         const rg = regs[regId[k]];
-        const terr = rg.owners.size === 1 ? [...rg.owners][0] : -1;
+        // 말을 다 놓기 전에는 영역 색을 칠하지 않음 (첫 말을 놓은 사람이 판 전체를 가진 것처럼 보이지 않게)
+        const terr = st.ph !== 'place' && rg.owners.size === 1 ? [...rg.owners][0] : -1;
         const cls = ['wl-cell'];
         if (terr >= 0) cls.push('terr' + terr);
         if (opts.has(k)) cls.push('reach', L.brk ? 'reach-brk' : '');

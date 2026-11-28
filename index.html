@@ -850,6 +850,33 @@ tr.me td { background: var(--accent-soft); }
 .online-count.down .dot { display: inline-block; margin-right: 6px; vertical-align: middle; }
 .online-count.down .dot { background: var(--sig-r); }
 .online-count.down .btn { margin-left: 4px; }
+/* 픽셀 캐릭터 */
+.av-svg { display: block; image-rendering: pixelated; }
+.av-chip { display: inline-flex; align-items: center; justify-content: center; flex: none; padding: 1px; border: 2px solid var(--pc, var(--line-strong)); background: var(--surface-2); vertical-align: middle; line-height: 0; }
+.av-chip.t0 { --pc: var(--p0); }
+.av-chip.t1 { --pc: var(--p1); }
+.av-chip.big { padding: 2px; }
+.wl-player .av-chip, .pill .av-chip, .duel-name .av-chip, .jg-seq-name .av-chip, .rev .av-chip, td .av-chip { margin-right: 4px; }
+.seat-face.av { width: 56px; height: 56px; background: var(--surface-2); line-height: 0; display: grid; place-items: center; }
+.seat-face.av .av-svg { width: 48px; height: 48px; }
+.av-change { margin-top: 4px; }
+.ann .av-chip { margin-right: 6px; }
+.av-mine { display: grid; gap: 8px; }
+.av-mine-row { display: flex; align-items: center; gap: 10px; }
+.av-mine-text { display: grid; line-height: 1.3; }
+.av-mine-text .note { margin: 0; font-size: 12px; }
+.av-lobby { margin: 10px 0 4px; }
+.av-picker { display: grid; gap: 6px; padding: 10px; border: 2px solid var(--line-strong); background: var(--surface); }
+.av-head { display: flex; align-items: center; gap: 12px; }
+.av-big { border: 2px solid var(--line-strong); background: var(--surface-2); padding: 3px; line-height: 0; }
+.av-meta { display: grid; gap: 4px; justify-items: start; }
+.av-title { font-size: 12px; color: var(--muted); }
+.av-label { margin: 4px 0 0; font-size: 12px; font-weight: 700; color: var(--muted); }
+.av-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.av-opt { padding: 2px; border: 2px solid var(--line); background: var(--surface-2); cursor: pointer; line-height: 0; }
+.av-opt.on, .av-swatch.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.av-opt:focus-visible, .av-swatch:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.av-swatch { width: 28px; height: 28px; border: 2px solid var(--line-strong); cursor: pointer; padding: 0; }
 
 </style>
 <div id="topband"></div>
@@ -959,6 +986,515 @@ tr.me td { background: var(--accent-soft); }
     const s = Math.max(0, Math.round(ms / 1000));
     return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
   };
+})();
+
+/* ---- avatar-shapes.js ---- */
+/* 픽셀 캐릭터 모양 (모두 이 사이트에서 새로 그린 캐릭터). 글자 뜻은 src/avatar.js 맨 위 설명 참고
+ * 성별·나이대·피부색·스타일이 고루 섞이도록: 사람 12가지 + 로봇·고양이·곰·꼬마 악마 */
+(function () {
+  const App = (globalThis.App = globalThis.App || {});
+  App.avatarShapes = [
+    {
+      id: 'suit', name: '정장',
+      grid: [
+        '................',
+        '.....KKKKKK.....',
+        '....KHHHHHHK....',
+        '...KHHHHHhHHK...',
+        '...KHHHHHHHHK...',
+        '...KHSSSSSSHK...',
+        '...KSSSSSSSSK...',
+        '...KSSESSESSK...',
+        '...KSSSSSSSSK...',
+        '...KsSSKKSSsK...',
+        '....KsSSSSsK....',
+        '....KKKSSKKK....',
+        '..KKCCWEEWCCKK..',
+        '.KCCCCWEEWCCCCK.',
+        '.KCCcCWEEWCcCCK.',
+        'KCCCcCWEEWCcCCCK',
+      ],
+    },
+    {
+      id: 'bob', name: '단발',
+      grid: [
+        '................',
+        '.....KKKKKK.....',
+        '....KHHHHHHK....',
+        '...KHHHHHHhHK...',
+        '..KHHHHHHHHhHK..',
+        '..KHHHHHHHHHHK..',
+        '..KHSSSSSSSSHK..',
+        '..KHSSESSESSHK..',
+        '..KHSRSSSSRSHK..',
+        '..KHHsSKKSsHHK..',
+        '..KHHHsSSsHHHK..',
+        '...KKKKSSKKKK...',
+        '..KKCWWSSWWCKK..',
+        '.KCCCCWccWCCCCK.',
+        '.KCCcCCCCCCcCCK.',
+        'KCCCcCCCCCCcCCCK',
+      ],
+    },
+    {
+      id: 'cap', name: '모자',
+      grid: [
+        '.......KK.......',
+        '.....KKccKK.....',
+        '....KCCCCCCK....',
+        '...KCCCCCCCcK...',
+        '.KKKCCCCCCCcK...',
+        'KCCCccccccccK...',
+        'KcccKHHhHHHHHK..',
+        '.KKKSSESSESHK...',
+        '...KSSSSSSSSK...',
+        '...KsSSKKSSsK...',
+        '....KsSSSSsK....',
+        '....KKKSSKKK....',
+        '..KKCCWssWCCKK..',
+        '.KCCCCCWWCCCCCK.',
+        '.KCCcCCCCCCcCCK.',
+        'KCCCcCCCCCCcCCCK',
+      ],
+    },
+    {
+      id: 'glasses', name: '안경',
+      grid: [
+        '................',
+        '.....KKKKKK.....',
+        '....KHHhhHHK....',
+        '...KHHHHHhhHK...',
+        '...KHSSSHHHhK...',
+        '...KKKKSSKKKK...',
+        '...KWEWKKWEWK...',
+        '...KwEwSSwEwK...',
+        '...KSSSSSSSSK...',
+        '...KsSSKKSSsK...',
+        '....KsSSSSsK....',
+        '....KKKSSKKK....',
+        '..KKCcWSSWcCKK..',
+        '.KCCCcWWWWcCCCK.',
+        '.KCCcCcWWcCcCCK.',
+        'KCCCcCCccCCcCCCK',
+      ],
+    },
+    {
+      id: 'hood', name: '후드',
+      grid: [
+        '................',
+        '.....KKKKKK.....',
+        '...KKCCCCCCKK...',
+        '..KCCCCCCCCCCK..',
+        '.KCCCccccccCCCK.',
+        '.KCCcHHHHhHcCCK.',
+        '.KCcHSSSSSSHcCK.',
+        '.KCcSSESSESScCK.',
+        '.KCcSSSSSSSScCK.',
+        '.KCcsSSKKSSscCK.',
+        '.KcCccsSSsccCcK.',
+        '.KcCCcWccWcCCcK.',
+        'KCccCcWccWcCccCK',
+        'KCCCCCWCCWCCCCCK',
+        'KCcCCCWCCWCCCcCK',
+        'KCcCCCwCCwCCCcCK',
+      ],
+    },
+    {
+      id: 'ponytail', name: '묶음머리',
+      grid: [
+        '.........KKKKK..',
+        '.....KKKKCCHhhK.',
+        '....KHHHHccHKHhK',
+        '...KHHHHHHhHKHhK',
+        '...KHHHHHHHHKHHK',
+        '...KHSSSSSSHKhHK',
+        '...KSSSSSSSSKhHK',
+        '...KSSESSESSKHK.',
+        '...KSRSSSSRSKhK.',
+        '...KsSSKKSSsKHK.',
+        '....KsSSSSsK.K..',
+        '....KKKSSKKK....',
+        '..KKCCCcGCCCKK..',
+        '.KCCCCCcWCCCCCK.',
+        '.KCCcCCcWCCcCCK.',
+        'KCCCcCCcWCCcCCCK',
+      ],
+    },
+    {
+      id: 'longhair', name: '긴머리',
+      grid: [
+        '................',
+        '.....KKKKKK.....',
+        '....KHHHHhHK....',
+        '...KCCCCCCCCK...',
+        '..KHccccccccHK..',
+        '..KHHSSSSSShHK..',
+        '..KHSSSSSSSSHK..',
+        '..KHSSESSESSHK..',
+        '..KHSSSSSSSSHK..',
+        '..KHsSSRRSSsHK..',
+        '..KHHsSSSSsHHK..',
+        '..KHHHKSSKHHHK..',
+        '.KHHhKCSSCKhHHK.',
+        '.KHHhCCWWCChHHK.',
+        'KCHHhCCCCCChHHCK',
+        'KCcHHCcCCcCHHcCK',
+      ],
+    },
+    {
+      id: 'curly', name: '곱슬머리',
+      grid: [
+        '...KKK.KK.KKK...',
+        '..KHhHKHhKHhHK..',
+        '.KHHHHhHHhHHHHK.',
+        'KHhHHHHHHHHHHhHK',
+        'KHHHhHHHHHHhHHHK',
+        '.KHHHTTTTTTHHHK.',
+        'KHhHtTTTTTTtHhHK',
+        'KHHHTTETTETTHHHK',
+        '.KHhTTTTTTTThHK.',
+        '.KHHtTTKKTTtHHK.',
+        '..KYKtTTTTtKYK..',
+        '...KKKKTTKKKK...',
+        '..KKCCcTTcCCKK..',
+        '.KCCCCCccCCCCCK.',
+        '.KCCcCCCCCCcCCK.',
+        'KCCCcCCCCCCcCCCK',
+      ],
+    },
+    {
+      id: 'beard', name: '턱수염',
+      grid: [
+        '................',
+        '.....KKKKKK.....',
+        '....KCCCCCcK....',
+        '...KCCCCCCCcK...',
+        '..KcCcCcCcCcCK..',
+        '..KcCcCcCcCcCK..',
+        '...KUUUUUUUUK...',
+        '...KHUEUUEUHK...',
+        '...KHUUuuUUHK...',
+        '...KHUHHHHUHK...',
+        '...KhHHuuHHhK...',
+        '....KHhHHhHK....',
+        '..KKccKHHKccKK..',
+        '.KCCCccKKccCCCK.',
+        '.KCCCCcwwcCCCCK.',
+        'KCCCCCcwwcCCCCCK',
+      ],
+    },
+    {
+      id: 'kid', name: '어린이',
+      grid: [
+        '.....KKKKKK.....',
+        '...KKHHHHHHKK...',
+        '..KHHHHHHHHhHK..',
+        '.KKHHHHHHHHHHKK.',
+        'KHHKHHHHHHHHKHHK',
+        'KCCKHHSHHSHHKCCK',
+        'KccKSSESSESSKccK',
+        'KHhKSRSSSSRSKhHK',
+        'KHHKSSKSSKSSKHHK',
+        '.KHKsSSKKSSsKHK.',
+        '..K.KsSSSSsK.K..',
+        '.....KKSSKK.....',
+        '...KKCcSScCKK...',
+        '..KCCCCccCCCCK..',
+        '.KCCcCCCCCCcCCK.',
+        '.KCCcCCCCCCcCCK.',
+      ],
+    },
+    {
+      id: 'grandma', name: '할머니',
+      grid: [
+        '......KKKK......',
+        '.....KWWWwK.....',
+        '....KKKwwKKK....',
+        '...KWWWwWWWwK...',
+        '...KWwwWWwwwK...',
+        '...KwWSSSSWwK...',
+        '...KSKKSSKKSK...',
+        '...KSESKKSESK...',
+        '...KSKKSSKKSK...',
+        '...KsRsKKsRsK...',
+        '....KsSSSSsK....',
+        '....KKKSSKKK....',
+        '..KKCcWSSWcCKK..',
+        '.KCCCcWYYWcCCCK.',
+        '.KCCCcWWWWcCCCK.',
+        'KCCCCcWWWWcCCCCK',
+      ],
+    },
+    {
+      id: 'grandpa', name: '할아버지',
+      grid: [
+        '................',
+        '.....KKKKKK.....',
+        '....KUUUUUUK....',
+        '...KUUUUUUSUK...',
+        '..KwUUUUUUUUwK..',
+        '..KWwUUUUUUwWK..',
+        '..KwUWWUUWWUwK..',
+        '.KUKUUEUUEUUKUK.',
+        '.KuKUUUuuUUUKuK.',
+        '..KKUuwwwwuUKK..',
+        '....KuUKKUuK....',
+        '....KKKUUKKK....',
+        '..KKCWWUUWWCKK..',
+        '.KCCCcWWWWcCCCK.',
+        '.KCcCCcWWcCCcCK.',
+        'KCCcCCcWWcCCcCCK',
+      ],
+    },
+    {
+      id: 'robot', name: '로봇',
+      grid: [
+        '.......KK.......',
+        '......KYYK......',
+        '......KGgK......',
+        '...KKKKKKKKKK...',
+        '...KwGGGGGGgK...',
+        '..KKGEEEEEEgKK..',
+        '.KCgGEYEEYEggCK.',
+        '.KcgGEYEEYEggcK.',
+        '..KKGEEEEEEgKK..',
+        '...KGEEYYEEgK...',
+        '...KggggggggK...',
+        '...KKKKKKKKKK...',
+        '..KKCCCCCCCCKK..',
+        '.KCCCCGGGGCCCCK.',
+        '.KCcCCGRYGCCcCK.',
+        'KCCcCCGGGGCCcCCK',
+      ],
+    },
+    {
+      id: 'cat', name: '고양이',
+      grid: [
+        '...K........K...',
+        '..KcK......KcK..',
+        '..KccKKKKKKccK..',
+        '..KCCCCccCCCCK..',
+        '..KCCcCccCcCCK..',
+        '..KCCCCCCCCCCK..',
+        '..KCCECCCCECCK..',
+        '.KCCCECCCCECCCK.',
+        '.KCCCCWccWCCCCK.',
+        '.KcCCWKWWKWCCcK.',
+        '..KcCCWWWWCCcK..',
+        '...KKKCCCCKKK...',
+        '..KKCCWWWWCCKK..',
+        '.KCCCCCWWCCCCCK.',
+        '.KCCcCCCCCCcCCK.',
+        'KCCCcCCCCCCcCCCK',
+      ],
+    },
+    {
+      id: 'bear', name: '곰',
+      grid: [
+        '..KKK......KKK..',
+        '.KCCCK....KCCCK.',
+        '.KCccCKKKKCccCK.',
+        '.KCCCCCCCCCCCCK.',
+        '..KCCCCCCCCCCK..',
+        '..KCCCCCCCCCCK..',
+        '..KCCECCCCECCK..',
+        '..KCCECWWCECCK..',
+        '..KCCWWEEWWCCK..',
+        '..KcCWWWWWWCcK..',
+        '...KcCWWWWCcK...',
+        '...KKKKKKKKKK...',
+        '..KCccccccccCK..',
+        '.KCCccccccccCCK.',
+        '.KCCCCCccCCCCCK.',
+        'KCCCCCCccCCCCCCK',
+      ],
+    },
+    {
+      id: 'devil', name: '꼬마 악마',
+      grid: [
+        '....K......K....',
+        '...KRK....KRK...',
+        '...KRRKKKKRRK...',
+        '...KHHHHHHHHK...',
+        '...KHHHHHhHHK...',
+        '.K.KHSSHHSSHK.K.',
+        'KCKKSHSSSSHSKKCK',
+        'KCcKSSESSESSKcCK',
+        'KCcKSSSSSSSSKcCK',
+        'KCcKsSKKKKKsKcCK',
+        '.KccKsSWRRsKccK.',
+        '.KcccKKSSKKcccK.',
+        'KCCCcCKYYKCcCCCK',
+        'KCCCCcCKKCcCCCCK',
+        'KCCCCcCCCCcCCCCK',
+        'KCCCCcCCCCcCCCCK',
+      ],
+    },
+  ];
+})();
+
+/* ---- avatar.js ---- */
+/* 픽셀 캐릭터: 모양(App.avatarShapes, 16×16 글자 그림) × 색 10가지
+ *
+ * - 캐릭터 값은 [모양 번호, 색 번호]. 처음 오면 무작위로 정해 이 브라우저에 기억 (App.avatar.mine)
+ * - 그림 글자: '.' 투명, K 테두리, S/s 피부·피부 그늘, H/h 머리카락·밝은 머리,
+ *   W/w 흰색·밝은 회색, E 눈·짙은 색, R 볼·입(빨강), Y 노랑(불빛), G/g 금속·짙은 금속, O 주황(부리·코),
+ *   U/u 중간 피부·그늘, T/t 짙은 피부·그늘,
+ *   C/c 고른 색·그 그늘  ← 색을 바꾸면 C/c 만 바뀜
+ * - 그리기는 SVG 사각형 (선명한 픽셀). 자리 색 테두리를 두른 작은 표시는 App.avatar.seat(W, i)
+ */
+(function () {
+  const App = (globalThis.App = globalThis.App || {});
+  const N = 16;
+  const FIXED = {
+    K: '#1d1b22', S: '#f3c9a1', s: '#d79f76', H: '#3b2a22', h: '#6a4c3b', W: '#f7f6f2', w: '#c8ccd4',
+    E: '#16141a', R: '#e2575b', Y: '#f6cf45', G: '#a8b0ba', g: '#6c7480', O: '#f0913a',
+    U: '#c98d5f', u: '#a2693f', T: '#8a5a3c', t: '#6a4128', // 중간·짙은 피부와 그늘
+  };
+  const COLORS = [
+    { id: 'red', name: '빨강', C: '#e5484d', c: '#a52a2f' },
+    { id: 'orange', name: '주황', C: '#f7832a', c: '#b3561a' },
+    { id: 'yellow', name: '노랑', C: '#f2c230', c: '#b1861a' },
+    { id: 'lime', name: '연두', C: '#8cc63f', c: '#5c8a25' },
+    { id: 'green', name: '초록', C: '#2f9e62', c: '#1d6b41' },
+    { id: 'sky', name: '하늘', C: '#4cc3e6', c: '#2a87a6' },
+    { id: 'blue', name: '파랑', C: '#3b6fe0', c: '#2447a0' },
+    { id: 'purple', name: '보라', C: '#8e5cd9', c: '#5e3a99' },
+    { id: 'pink', name: '분홍', C: '#ec6aa8', c: '#ac3f74' },
+    { id: 'black', name: '검정', C: '#5e5e6a', c: '#3a3a44' }, // 테두리(K)·눈과 구분되게 조금 밝은 검정
+  ];
+  const LETTERS = new Set(['.', 'C', 'c', ...Object.keys(FIXED)]);
+  const shapes = () => App.avatarShapes || [];
+
+  function palette(ci) { const col = COLORS[ci] || COLORS[0]; return Object.assign({ C: col.C, c: col.c }, FIXED); }
+
+  function validate(sh) {
+    const e = [];
+    if (!sh || !/^[a-z][a-z0-9-]{1,15}$/.test(sh.id || '')) e.push('id');
+    if (typeof sh.name !== 'string' || sh.name.length < 1 || sh.name.length > 6) e.push('name 1~6자');
+    if (!Array.isArray(sh.grid) || sh.grid.length !== N) { e.push('grid 는 16줄'); return e; }
+    sh.grid.forEach((r, y) => {
+      if (typeof r !== 'string' || [...r].length !== N) e.push(y + '번째 줄은 16글자');
+      else [...r].forEach((ch, x) => { if (!LETTERS.has(ch)) e.push(`(${x},${y}) '${ch}' 못 쓰는 글자`); });
+    });
+    const all = sh.grid.join('');
+    if (!/[C]/.test(all)) e.push('색이 바뀌는 C 칸이 없음');
+    if (!/K/.test(all)) e.push('테두리 K 가 없음');
+    return e;
+  }
+
+  // 같은 줄에서 같은 색이 이어지면 사각형 하나로
+  function rects(sh, ci) {
+    const pal = palette(ci), out = [];
+    sh.grid.forEach((row, y) => {
+      const cs = [...row];
+      for (let x = 0; x < N;) {
+        const ch = cs[x];
+        if (ch === '.' || !pal[ch]) { x++; continue; }
+        let w = 1;
+        while (x + w < N && cs[x + w] === ch) w++;
+        out.push([x, y, w, pal[ch]]);
+        x += w;
+      }
+    });
+    return out;
+  }
+
+  const NS = 'http://www.w3.org/2000/svg';
+  function svg(a, size, label) {
+    const list = shapes();
+    a = norm(a);
+    const sh = list[a[0]] || list[0];
+    const el = document.createElementNS(NS, 'svg');
+    el.setAttribute('viewBox', '0 0 16 16');
+    el.setAttribute('width', String(size || 32));
+    el.setAttribute('height', String(size || 32));
+    el.setAttribute('shape-rendering', 'crispEdges');
+    el.setAttribute('class', 'av-svg');
+    if (label) { el.setAttribute('role', 'img'); el.setAttribute('aria-label', label); } else el.setAttribute('aria-hidden', 'true');
+    if (!sh) return el;
+    for (const [x, y, w, fill] of rects(sh, a[1])) {
+      const r = document.createElementNS(NS, 'rect');
+      r.setAttribute('x', x); r.setAttribute('y', y); r.setAttribute('width', w); r.setAttribute('height', 1); r.setAttribute('fill', fill);
+      el.appendChild(r);
+    }
+    return el;
+  }
+
+  function norm(a) {
+    const ns = shapes().length || 1;
+    if (!Array.isArray(a) || a.length !== 2) return [0, 0];
+    const s = a[0] | 0, c = a[1] | 0;
+    return [((s % ns) + ns) % ns, ((c % COLORS.length) + COLORS.length) % COLORS.length];
+  }
+  const valid = (a) => Array.isArray(a) && a.length === 2 && Number.isInteger(a[0]) && Number.isInteger(a[1]) && a[0] >= 0 && a[0] < shapes().length && a[1] >= 0 && a[1] < COLORS.length;
+
+  // 무작위: 이미 쓰인 것(taken)과 모양·색이 겹치지 않게 최대한
+  function random(taken) {
+    const ns = shapes().length || 1, nc = COLORS.length;
+    taken = (taken || []).filter(valid);
+    let best = null, bestScore = -1;
+    for (let t = 0; t < 40; t++) {
+      const a = [Math.floor(Math.random() * ns), Math.floor(Math.random() * nc)];
+      const score = (taken.some((x) => x[0] === a[0]) ? 0 : 2) + (taken.some((x) => x[1] === a[1]) ? 0 : 1);
+      if (score > bestScore) { best = a; bestScore = score; }
+      if (score === 3) break;
+    }
+    return best;
+  }
+
+  function mine() {
+    let a = null;
+    try { a = App.store.get('avatar', null); } catch (e) { /* 무시 */ }
+    if (!valid(a)) { a = random(); try { App.store.set('avatar', a); } catch (e) { /* 무시 */ } }
+    return a;
+  }
+  function setMine(a) { if (valid(a)) { try { App.store.set('avatar', a); } catch (e) { /* 무시 */ } } }
+
+  const nameOf = (a) => { a = norm(a); const sh = shapes()[a[0]]; return (COLORS[a[1]] || COLORS[0]).name + ' ' + (sh ? sh.name : ''); };
+
+  // 자리 색 테두리를 두른 작은 캐릭터 (게임 중 이름표 등). 캐릭터가 없으면 예전 색 점
+  function seat(W, i, size, extraCls) {
+    const p = W && W.pl && W.pl[i];
+    if (!p || !valid(p.a)) return App.h('span', { class: 'seat-dot' + (extraCls ? ' ' + extraCls : ''), style: extraCls ? null : { background: `var(--p${i})` } });
+    const box = App.h('span', { class: 'av-chip' + (extraCls ? ' ' + extraCls : ''), style: extraCls ? null : { '--pc': `var(--p${i})` } });
+    box.append(svg(p.a, size || 32));
+    return box;
+  }
+
+  // 모양·색 고르기 (onChange(a) 로 알림). 미리 보기 + 모양 줄 + 색 줄 + 무작위
+  function picker(cur, onChange, o) {
+    o = o || {};
+    let a = valid(cur) ? cur.slice() : mine();
+    const root = App.h('div', { class: 'av-picker' + (o.compact ? ' compact' : '') });
+    function paint() {
+      App.clear(root);
+      const big = App.h('div', { class: 'av-big' }, svg(a, o.compact ? 48 : 64, '내 캐릭터: ' + nameOf(a)));
+      const shapesRow = App.h('div', { class: 'av-row', role: 'radiogroup', 'aria-label': '캐릭터 모양' },
+        shapes().map((sh, i) => App.h('button', {
+          class: 'av-opt' + (i === a[0] ? ' on' : ''), type: 'button', role: 'radio', 'aria-checked': i === a[0] ? 'true' : 'false', title: sh.name, 'aria-label': '모양 ' + sh.name,
+          onclick: () => set([i, a[1]]),
+        }, svg([i, a[1]], 32))));
+      const colorRow = App.h('div', { class: 'av-row colors', role: 'radiogroup', 'aria-label': '캐릭터 색' },
+        COLORS.map((col, i) => App.h('button', {
+          class: 'av-swatch' + (i === a[1] ? ' on' : ''), type: 'button', role: 'radio', 'aria-checked': i === a[1] ? 'true' : 'false', title: col.name, 'aria-label': '색 ' + col.name,
+          style: { background: col.C }, onclick: () => set([a[0], i]),
+        })));
+      root.append(
+        App.h('div', { class: 'av-head' }, big,
+          App.h('div', { class: 'av-meta' }, App.h('span', { class: 'av-title' }, o.title || '내 캐릭터'), App.h('b', { class: 'av-name' }, nameOf(a)),
+            App.h('div', { class: 'row wrap' },
+              App.h('button', { class: 'btn tiny', type: 'button', onclick: () => set(random([a])) }, '🎲 무작위'),
+              o.onClose ? App.h('button', { class: 'btn tiny ghost', type: 'button', onclick: o.onClose }, '닫기') : null))),
+        App.h('p', { class: 'av-label' }, '모양'), shapesRow,
+        App.h('p', { class: 'av-label' }, '색'), colorRow);
+    }
+    function set(n) { a = n; setMine(a); paint(); if (onChange) onChange(a.slice()); }
+    paint();
+    return root;
+  }
+
+  App.avatar = { N, COLORS, FIXED, palette, validate, rects, svg, norm, valid, random, mine, setMine, nameOf, seat, picker, shapes };
 })();
 
 /* ---- eq.js ---- */
@@ -2016,6 +2552,7 @@ tr.me td { background: var(--accent-soft); }
       this.code = code || null;
       this.onUpdate = onUpdate || (() => {});
       this.local = {}; // 게임 화면이 기억하는 내 쪽 정보 (낸 카드, 내 비밀 수식 등)
+      this.av = App.avatar ? App.avatar.mine() : null; // 내 픽셀 캐릭터 [모양, 색]
       this.status = 'connecting';
       this.error = null;
       this.seq = 0;
@@ -2081,7 +2618,7 @@ tr.me td { background: var(--accent-soft); }
           if (other) { this.status = 'failed'; this.error = '같은 코드의 방이 이미 있어요. 다시 만들어 주세요.'; this._changed(); }
         }, 1800);
       } else {
-        await this.room.presence({ g: this.gameId, nick: this.nick, act: null });
+        await this.room.presence({ g: this.gameId, nick: this.nick, av: this.av, act: null });
         this.findTimer = setTimeout(() => {
           if (!this.W && !this.closed) { this.status = 'nohost'; this.error = '그 코드의 방을 찾지 못했어요. 코드를 다시 확인해 주세요. 코드가 맞다면, 방장과 내가 모두 로그인해 있고 페이지 주인에게 초대받은 계정인지 확인해 주세요.'; this._changed(); }
         }, 6000);
@@ -2095,7 +2632,7 @@ tr.me td { background: var(--accent-soft); }
       const e = this.engine;
       this.W = {
         g: this.gameId, ph: 'lobby', v: 0,
-        pl: [{ p: this.myPeer || 'host', n: this.nick, b: 0, on: 1, tm: 0 }],
+        pl: [{ p: this.myPeer || 'host', n: this.nick, b: 0, on: 1, tm: 0, a: this.av }],
         o: Object.assign({}, e.defaultOpts || {}),
         s: null, ak: [], er: null, dl: [], res: null,
       };
@@ -2130,10 +2667,12 @@ tr.me td { background: var(--accent-soft); }
         if (W.pl.length !== before) changed = true;
         // 새로 온 사람 넣기
         for (const [peer, p] of present) {
-          if (!W.pl.some((x) => x.p === peer) && W.pl.length < this.engine.maxPlayers) {
-            W.pl.push({ p: peer, n: App.cleanNick(p.presence.nick), b: 0, on: 1, tm: this._nextTeam() });
+          const av = App.avatar && App.avatar.valid(p.presence.av) ? p.presence.av.slice() : null;
+          const x = W.pl.find((q) => q.p === peer);
+          if (!x && W.pl.length < this.engine.maxPlayers) {
+            W.pl.push({ p: peer, n: App.cleanNick(p.presence.nick), b: 0, on: 1, tm: this._nextTeam(), a: av || this._randomAv() });
             changed = true;
-          }
+          } else if (x && av && (!x.a || x.a[0] !== av[0] || x.a[1] !== av[1])) { x.a = av; changed = true; } // 로비에서 캐릭터를 바꿈
         }
       } else {
         // 게임 중: 연결 상태 갱신 (끊기면 컴퓨터가 대신 둡니다)
@@ -2306,8 +2845,21 @@ tr.me td { background: var(--accent-soft); }
       const names = e.botNames || ['컴퓨터 A', '컴퓨터 B', '컴퓨터 C', '컴퓨터 D', '컴퓨터 E', '컴퓨터 F', '컴퓨터 G'];
       const used = new Set(W.pl.map((x) => x.n));
       const n = names.find((x) => !used.has(x)) || '컴퓨터';
-      W.pl.push({ p: 'bot' + rid().slice(0, 6), n, b: 1, on: 1, tm: this._nextTeam() });
+      W.pl.push({ p: 'bot' + rid().slice(0, 6), n, b: 1, on: 1, tm: this._nextTeam(), a: this._randomAv() });
       if (!silent) this._publish();
+    }
+    // 방 안의 다른 캐릭터와 겹치지 않게 무작위
+    _randomAv() { return App.avatar ? App.avatar.random(this.W.pl.map((x) => x.a)) : null; }
+    // 내 캐릭터 바꾸기 (로비에서): 방장·혼자면 바로 반영, 참가자면 방장에게 알림
+    setMyAvatar(a) {
+      if (!App.avatar || !App.avatar.valid(a)) return;
+      this.av = a.slice();
+      const W = this.W;
+      if (this.isHost) {
+        if (W && W.ph === 'lobby' && W.pl[0]) { W.pl[0].a = a.slice(); this._publish(); }
+      } else if (this.room) {
+        this.room.presence({ av: a.slice() }).catch(() => {});
+      }
     }
     // 팀전: 인원이 적은 팀으로 넣음
     _nextTeam() { const c = [0, 0]; for (const x of this.W.pl) c[x.tm ? 1 : 0]++; return c[0] <= c[1] ? 0 : 1; }
@@ -2423,6 +2975,7 @@ tr.me td { background: var(--accent-soft); }
       h('p', { class: 'announce-head' }, '📢 안내 방송'),
       h('ul', { class: 'announce-list' }, order.map((i) => h('li', { class: 'ann ' + places[i] + (i === mySeat ? ' me' : '') },
         h('span', { class: 'ann-tag' }, PLACES[places[i]][0]),
+        App.avatar ? App.avatar.seat(W, i) : null,
         h('span', null, h('b', null, W.pl[i].n), '님은 지금 바로 ', h('b', { class: 'ann-place' }, PLACES[places[i]][1]), ' 이동해주시기 바랍니다.')))),
       W.res.exileHow === 'lot' ? h('p', { class: 'note' }, '꼴찌가 동점이라 추첨으로 유배지 한 명을 정했어요.')
         : W.res.exileHow === 'tb' ? h('p', { class: 'note' }, '꼴찌가 동점이라 오답이 더 많은 사람이 유배지로 가요.') : null);
@@ -2493,9 +3046,26 @@ tr.me td { background: var(--accent-soft); }
           h('p', null, '이 기기에서 컴퓨터 플레이어와 바로 시작합니다.'),
           h('button', { class: 'btn primary', onclick: () => { App.store.set('nick', nickInput.value); startSession('local'); } }, '바로 시작')) : null;
 
+        let avBox = null;
+        if (App.avatar) {
+          // 내 캐릭터: 평소엔 한 줄로, 「바꾸기」를 누르면 고르기 판 (판 안에 닫기)
+          avBox = h('div', { class: 'av-mine' });
+          let open = false;
+          const paintAv = () => {
+            App.clear(avBox);
+            const a = App.avatar.mine();
+            if (open) { avBox.append(App.avatar.picker(a, null, { compact: true, onClose: () => { open = false; paintAv(); } })); return; }
+            avBox.append(h('div', { class: 'av-mine-row' },
+              h('span', { class: 'av-chip big' }, App.avatar.svg(a, 32, '내 캐릭터: ' + App.avatar.nameOf(a))),
+              h('span', { class: 'av-mine-text' }, h('span', { class: 'note' }, '내 캐릭터'), h('b', null, App.avatar.nameOf(a))),
+              h('button', { class: 'btn tiny', type: 'button', onclick: () => { open = true; paintAv(); } }, '바꾸기')));
+          };
+          paintAv();
+        }
         view.append(
           h('div', { class: 'mp-choose' },
             h('label', { class: 'field', for: cfg.gameId + '-nick' }, h('span', null, '내 닉네임'), nickInput),
+            avBox,
             h('div', { class: 'mode-grid' },
               soloCard,
               h('div', { class: 'mode-card' },
@@ -2543,7 +3113,7 @@ tr.me td { background: var(--accent-soft); }
           if (p) {
             cells.push(h('li', { class: 'seat' + (i === s.mySeat ? ' me' : '') + (fresh.has(p.p) ? ' pop' : ''), style: { '--pc': `var(--p${i % 7})` } },
               h('span', { class: 'seat-no' }, 'P' + (i + 1)),
-              h('span', { class: 'seat-face', 'aria-hidden': 'true' }, p.b ? '🤖' : (Array.from(p.n)[0] || '?')),
+              h('span', { class: 'seat-face' + (App.avatar && App.avatar.valid(p.a) ? ' av' : ''), 'aria-hidden': 'true' }, App.avatar && App.avatar.valid(p.a) ? App.avatar.svg(p.a, 48) : (p.b ? '🤖' : (Array.from(p.n)[0] || '?'))),
               h('span', { class: 'seat-name' }, p.n),
               h('span', { class: 'seat-tags' },
                 i === 0 && s.mode !== 'local' ? tag('방장') : null,
@@ -2551,6 +3121,7 @@ tr.me td { background: var(--accent-soft); }
                 p.b ? tag('컴퓨터') : null,
                 !p.on ? tag('연결 끊김', 'warn') : null),
               cfg.seatExtra ? cfg.seatExtra(s, i, p) : null,
+              i === s.mySeat && W.ph === 'lobby' && App.avatar ? h('button', { class: 'btn tiny ghost av-change', 'aria-expanded': s._avOpen ? 'true' : 'false', onclick: () => { s._avOpen = !s._avOpen; render(s); } }, s._avOpen ? '닫기' : '캐릭터 바꾸기') : null,
               s.isHost && i !== 0 && W.ph === 'lobby' ? h('button', { class: 'btn tiny ghost seat-x', onclick: () => s.removeSeat(i), 'aria-label': p.n + ' 빼기' }, '빼기') : null));
           } else {
             cells.push(h('li', { class: 'seat empty' },
@@ -2622,6 +3193,10 @@ tr.me td { background: var(--accent-soft); }
                 : '방장이 「게임 시작」을 누르면 바로 시작돼요.')));
           }
           box.append(h('h4', { class: 'sub lobby-head' }, h('span', null, s.mode === 'local' ? '참가자' : '자리'), h('span', { class: 'mono' }, W.pl.length + ' / ' + e.maxPlayers)), seatGrid(s));
+          if (s._avOpen && App.avatar && s.mySeat >= 0) {
+            const cur = W.pl[s.mySeat] && W.pl[s.mySeat].a;
+            box.append(h('div', { class: 'av-lobby' }, App.avatar.picker(cur || s.av, (a) => s.setMyAvatar(a), { compact: true, onClose: () => { s._avOpen = false; render(s); } })));
+          }
           if (s.isHost) {
             if (cfg.renderOptions) { const o = h('div', { class: 'opts' }); cfg.renderOptions(o, s, false); box.append(o); }
             const ok = W.pl.length >= e.minPlayers;
@@ -3379,7 +3954,7 @@ tr.me td { background: var(--accent-soft); }
         h('span', { class: 'pill strong' }, st.ph === 'end' ? '대결 끝' : '라운드 ' + st.round + ' / ' + st.rounds),
         team ? [0, 1].map((t) => h('span', { class: 'pill team-pill t' + t }, TEAMS[t] + ' ', h('b', { class: 'mono' }, String(tp[t])))) : null,
         W.pl.map((p, i) => h('span', { class: 'pill' + (i === me ? ' me' : '') + (st.win === i && st.ph !== 'play' ? ' win' : '') },
-          h('span', { class: 'seat-dot' + (team ? ' t' + st.tm[i] : ''), style: team ? null : { background: `var(--p${i})` } }), p.n, ' ', h('b', { class: 'mono' }, String(st.pts[i])),
+          App.avatar.seat(W, i, 32, team ? 't' + st.tm[i] : ''), p.n, ' ', h('b', { class: 'mono' }, String(st.pts[i])),
           st.lockRem[i] > 0 && st.ph === 'play' ? h('span', { class: 'chip-tag warn' }, '잠김') : null))));
       if (st.ph === 'play') {
         if (def.prompt) g.append(def.prompt(L.pz));
@@ -3801,7 +4376,7 @@ tr.me td { background: var(--accent-soft); }
           }
           keyHandler = onKey;
           const head = h('div', { class: 'duel-head' },
-            names.map((n, i) => h('span', { class: 'duel-name' + (i === me ? ' me' : '') }, h('span', { class: 'seat-dot', style: { background: `var(--p${i})` } }), n, i === me ? ' (나)' : '')),
+            names.map((n, i) => h('span', { class: 'duel-name' + (i === me ? ' me' : '') }, App.avatar.seat(W, i), n, i === me ? ' (나)' : '')),
             h('span', { class: 'turn-pill' }, st.ph === 'set' ? '수식 정하기' : st.ph === 'guess' ? st.turn + '턴' + (st.rematch ? ' · 재경기 ' + st.rematch : '') : '종료'));
           g.append(head);
 
@@ -4193,7 +4768,7 @@ tr.me td { background: var(--accent-soft); }
 
     g.append(h('div', { class: 'wl-head' },
       [0, 1].map((i) => h('span', { class: 'wl-player' + (active(i) ? ' turn' : '') },
-        h('span', { class: 'seat-dot', style: { background: `var(--p${i})` } }), names[i], i === me ? ' (나)' : '', i === st.first ? h('span', { class: 'chip-tag' }, '선') : null,
+        App.avatar.seat(W, i), names[i], i === me ? ' (나)' : '', i === st.first ? h('span', { class: 'chip-tag' }, '선') : null,
         h('b', { class: 'wl-score' }, '●'.repeat(st.wins[i]) + '○'.repeat(Math.max(0, 2 - st.wins[i]))),
         active(i) ? h('span', { class: 'timer', 'data-timer-seat': i }) : null)),
       h('span', { class: 'pill' }, '라운드 ' + st.round + ' / ' + st.rounds + ' · 2판 먼저')));
@@ -4249,7 +4824,7 @@ tr.me td { background: var(--accent-soft); }
       const rowFor = (seat) => {
         const hidden = st.qlen[seat];
         const mine = seat === me ? L.mine.slice(Math.max(0, L.mine.length - hidden)) : null;
-        return h('div', { class: 'jg-seq' }, h('span', { class: 'jg-seq-name' }, h('span', { class: 'seat-dot', style: { background: `var(--p${seat})` } }), names[seat] + (seat === me ? ' (나)' : '')),
+        return h('div', { class: 'jg-seq' }, h('span', { class: 'jg-seq-name' }, App.avatar.seat(W, seat), names[seat] + (seat === me ? ' (나)' : '')),
           h('div', { class: 'jg-seq-cards' },
             st.front[seat] != null ? cardEl(st.front[seat], { cls: 'cur' }) : h('div', { class: 'jg-card back' }, h('b', null, '배치 중')),
             Array.from({ length: hidden }, (_, k) => (mine && mine[k] != null ? cardEl(mine[k], { cls: 'secret' }) : h('div', { class: 'jg-card back' }, h('b', null, '?'))))));
@@ -4741,7 +5316,7 @@ tr.me td { background: var(--accent-soft); }
 
     g.append(h('div', { class: 'wl-head' },
       [0, 1].map((i) => h('span', { class: 'wl-player' + (active(i) ? ' turn' : '') },
-        h('span', { class: 'seat-dot', style: { background: `var(--p${i})` } }), names[i], i === me ? ' (나)' : '', i === st.rfirst ? h('span', { class: 'chip-tag' }, '선') : null,
+        App.avatar.seat(W, i), names[i], i === me ? ' (나)' : '', i === st.rfirst ? h('span', { class: 'chip-tag' }, '선') : null,
         h('b', { class: 'wl-score' }, String(st.pts[i])),
         active(i) ? h('span', { class: 'timer', 'data-timer-seat': i }) : null)),
       h('span', { class: 'pill' }, '라운드 ' + st.round + ' · 먼저 ' + st.target + '점'),
@@ -5930,7 +6505,7 @@ tr.me td { background: var(--accent-soft); }
 
     g.append(h('div', { class: 'wl-head' },
       names.map((nm, i) => h('span', { class: 'wl-player' + (st.ph !== 'buzz' && active(i) ? ' turn' : '') },
-        h('span', { class: 'seat-dot', style: { background: `var(--p${i})` } }), nm, i === me ? ' (나)' : '',
+        App.avatar.seat(W, i), nm, i === me ? ' (나)' : '',
         h('b', { class: 'wl-score' }, st.pts[i] + '점'))),
       h('span', { class: 'pill' }, '라운드 ' + st.round + (st.ot ? ' · 연장' : '') + ' · ' + WIN + '점 먼저')));
 
@@ -7344,7 +7919,7 @@ tr.me td { background: var(--accent-soft); }
           const r = st.rev.find((x) => x[0] === seat);
           const done = st.placed.includes(seat);
           return h('li', { class: 'rev' + (seat === st.cur ? ' cur' : '') + (done ? ' done' : '') },
-            h('span', { class: 'seat-dot', style: { background: `var(--p${seat})` } }),
+            App.avatar.seat(W, seat),
             h('span', { class: 'pname' }, names[seat]),
             h('span', { class: 'card-mini' }, String(r[1])),
             h('span', { class: 'chip-mini c' + r[2] }, COLORS[r[2]]),
@@ -7402,7 +7977,7 @@ tr.me td { background: var(--accent-soft); }
         const cards = [];
         for (let c = 0; c <= 6; c++) if (st.cards[i] & (1 << c)) cards.push(c);
         return h('tr', { class: i === me ? 'me' : '' },
-          h('td', null, h('span', { class: 'seat-dot', style: { background: `var(--p${i})` } }), ' ', p.n, i === st.first ? h('span', { class: 'chip-tag' }, '선') : null, !p.on ? h('span', { class: 'chip-tag warn' }, '끊김') : null),
+          h('td', null, App.avatar.seat(W, i), ' ', p.n, i === st.first ? h('span', { class: 'chip-tag' }, '선') : null, !p.on ? h('span', { class: 'chip-tag warn' }, '끊김') : null),
           h('td', { class: 'num' }, String(st.pen[i])),
           h('td', { class: 'mono' }, cards.join(' ') || '—'),
           h('td', null, h('div', { class: 'chips-cell' }, st.chips[i].map((c, k) => (c ? h('span', { class: 'chip-dot c' + k, title: COLORS[k] + ' ' + c + '개' }, c > 1 ? String(c) : '') : null)))),
@@ -7824,11 +8399,11 @@ tr.me td { background: var(--accent-soft); }
     g.append(h('p', { class: 'wl-round' }, st.n === 3 ? (st.rnd === 1 ? '1라운드 · 3인전 (가장 넓은 사람 생존)' : '2라운드 · 1:1 (지면 탈락)') : '1:1'));
     g.append(h('div', { class: 'wl-head' },
       st.seats.map((i) => h('span', { class: 'wl-player' + (st.turn === i && (st.ph === 'place' || st.ph === 'move') ? ' turn' : '') + (i === me ? ' me' : '') },
-        h('span', { class: 'seat-dot', style: { background: `var(--p${i})` } }), seatName(names, i, me),
+        App.avatar.seat(W, i), seatName(names, i, me),
         h('b', { class: 'wl-score' }, String(sc.area[i])),
         st.rnd === 1 ? h('span', { class: 'chip-tag' + (st.brk[i] ? '' : ' used') }, st.brk[i] ? '💥 1' : '💥 0') : null,
         st.turn === i && (st.ph === 'place' || st.ph === 'move') ? h('span', { class: 'timer', 'data-timer-seat': i }) : null)),
-      st.n === 3 && st.rnd === 2 && st.r1 ? h('span', { class: 'wl-player done' }, h('span', { class: 'seat-dot', style: { background: `var(--p${st.r1.rank[0]})` } }), seatName(names, st.r1.rank[0], me) + ' · 생존 확정') : null));
+      st.n === 3 && st.rnd === 2 && st.r1 ? h('span', { class: 'wl-player done' }, App.avatar.seat(W, st.r1.rank[0]), seatName(names, st.r1.rank[0], me) + ' · 생존 확정') : null));
 
     // 라운드 사이
     if (st.ph === 'between' && st.r1) {

@@ -25,7 +25,9 @@ const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/"/g, '&quot;').repl
 const TITLE = '두뇌 서바이벌에 내가 참가한다면?';
 const DESC = '두뇌 서바이벌 게임 열 가지를 직접 해 보세요. 친구와 방 코드나 대결 코드로 함께할 수 있어요.';
 const body = src('page.html').replace(/^<title>.*<\/title>\n/, '').replace('/*CSS*/', () => css).replace('/*JS*/', () => js);
-const cfgJs = 'window.App = Object.assign(window.App || {}, ' + JSON.stringify({ FIREBASE: conf.firebase, FB_SRC: 'fb.js', SHARE_URL: siteUrl !== '/' ? siteUrl : '' }) + ');';
+// 판 번호: 내용이 바뀌면 달라짐. 사이트가 version.json 과 비교해 새 판이면 한 번 새로 불러옴 (브라우저가 예전 판을 들고 있을 때)
+const BUILD = require('crypto').createHash('sha1').update(css + js + JSON.stringify(conf)).digest('hex').slice(0, 10);
+const cfgJs = 'window.App = Object.assign(window.App || {}, ' + JSON.stringify({ FIREBASE: conf.firebase, FB_SRC: 'fb.js', SHARE_URL: siteUrl !== '/' ? siteUrl : '', BUILD }) + ');';
 const site = `<!doctype html>
 <html lang="ko">
 <head>
@@ -56,4 +58,5 @@ for (const f of ['banner.jpg', 'og.jpg']) fs.copyFileSync(path.join(__dirname, '
 const fbBundle = path.join(__dirname, 'fbkit', 'fb.js');
 if (fs.existsSync(fbBundle)) fs.copyFileSync(fbBundle, path.join(siteDir, 'fb.js'));
 fs.writeFileSync(path.join(siteDir, '.nojekyll'), '');
-console.log('site', (site.length/1024).toFixed(1)+'KB', siteUrl !== '/' ? siteUrl : '(주소 미정: site.config.json 의 url)');
+fs.writeFileSync(path.join(siteDir, 'version.json'), JSON.stringify({ v: BUILD }));
+console.log('site', BUILD, (site.length/1024).toFixed(1)+'KB', siteUrl !== '/' ? siteUrl : '(주소 미정: site.config.json 의 url)');

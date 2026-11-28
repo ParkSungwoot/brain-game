@@ -231,6 +231,22 @@
     window.scrollTo(0, 0);
   }
 
+  // 새 판 확인: 브라우저(특히 카카오톡 안 브라우저)가 예전 페이지를 들고 있으면, 처음 열 때나 첫 화면으로 돌아올 때 한 번 새로 불러옴
+  // 게임 화면에서는 하지 않음 (하던 게임이 끊기지 않게)
+  function checkUpdate() {
+    if (!App.BUILD || typeof fetch !== 'function') return;
+    if (current && !String(current.id).startsWith('home')) return;
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (!j || !j.v || j.v === App.BUILD) return;
+      if (current && !String(current.id).startsWith('home')) return;
+      const k = 'reloaded-' + j.v;
+      try { if (sessionStorage.getItem(k)) return; sessionStorage.setItem(k, '1'); } catch (e) { return; }
+      location.replace(location.pathname + '?v=' + j.v + location.hash);
+    }).catch(() => {});
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); });
+  setTimeout(checkUpdate, 0);
+
   window.addEventListener('hashchange', route);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', route); else route();
   App.Net.init();

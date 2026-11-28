@@ -349,7 +349,7 @@
     g.append(h('div', { class: 'wl-head' },
       st.seats.map((i) => h('span', { class: 'wl-player' + (st.turn === i && (st.ph === 'place' || st.ph === 'move') ? ' turn' : '') + (i === me ? ' me' : '') },
         App.avatar.seat(W, i), seatName(names, i, me),
-        h('b', { class: 'wl-score' }, String(sc.area[i])),
+        h('b', { class: 'wl-score' }, st.ph === 'place' ? '–' : String(sc.area[i])), // 말을 놓는 동안에는 영역을 세지 않음
         st.rnd === 1 ? h('span', { class: 'chip-tag' + (st.brk[i] ? '' : ' used') }, st.brk[i] ? '💥 1' : '💥 0') : null,
         st.turn === i && (st.ph === 'place' || st.ph === 'move') ? h('span', { class: 'timer', 'data-timer-seat': i }) : null)),
       st.n === 3 && st.rnd === 2 && st.r1 ? h('span', { class: 'wl-player done' }, App.avatar.seat(W, st.r1.rank[0]), seatName(names, st.r1.rank[0], me) + ' · 생존 확정') : null));
@@ -394,7 +394,8 @@
         let owner = null;
         st.pc.forEach((list, sIdx) => list.forEach((p, i) => { if (p[0] === r && p[1] === c) owner = [sIdx, i, p[2]]; }));
         const rg = regs[regId[k]];
-        const terr = rg.owners.size === 1 ? [...rg.owners][0] : -1;
+        // 말을 다 놓기 전에는 영역 색을 칠하지 않음 (첫 말을 놓은 사람이 판 전체를 가진 것처럼 보이지 않게)
+        const terr = st.ph !== 'place' && rg.owners.size === 1 ? [...rg.owners][0] : -1;
         const cls = ['wl-cell'];
         if (terr >= 0) cls.push('terr' + terr);
         if (opts.has(k)) cls.push('reach', L.brk ? 'reach-brk' : '');

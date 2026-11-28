@@ -678,8 +678,10 @@
         const ids = W.pl.map((p) => p.p);
         const fresh = new Set(prev ? ids.filter((x, i) => i > 0 && !prev.ids.includes(x)) : []);
         if (prev && W.ph === 'lobby' && s.mode !== 'local') {
-          W.pl.forEach((p, i) => { if (fresh.has(p.p) && !p.b && i !== s.mySeat) App.toast('🙋 ' + p.n + '님이 들어왔어요'); });
-          prev.pl.forEach(([pid, n, b], i) => { if (i > 0 && !b && !ids.includes(pid)) App.toast(n + '님이 나갔어요'); });
+          // 알림은 화면을 다 그린 뒤에 (그리는 도중 띄우면 화면이 잠깐 비어 맨 위로 튀어 오름)
+          const later = (t) => setTimeout(() => App.toast(t), 0);
+          W.pl.forEach((p, i) => { if (fresh.has(p.p) && !p.b && i !== s.mySeat) later('🙋 ' + p.n + '님이 들어왔어요'); });
+          prev.pl.forEach(([pid, n, b], i) => { if (i > 0 && !b && !ids.includes(pid)) later(n + '님이 나갔어요'); });
         }
         s._seatSeen = { ids, pl: W.pl.map((p) => [p.p, p.n, p.b]) };
         const tag = (t, c) => h('span', { class: 'chip-tag' + (c ? ' ' + c : '') }, t);

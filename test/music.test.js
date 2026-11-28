@@ -25,6 +25,22 @@ const check = (cond, msg) => { console.log((cond ? 'ok   ' : 'FAIL ') + msg); if
   check(!(await playing(p)) && /꺼짐/.test(await p.textContent('.music-btn')), '끈 설정 기억 (새로고침 뒤)');
   await p.tap('.music-btn'); await p.waitForTimeout(500);
   check(await playing(p), '다시 켜면 바로 재생');
+  // 1-2) 곡 8개, 들어갈 때마다 무작위 (바로 전 곡은 안 나옴), 곡마다 오류 없이 재생
+  check((await p.evaluate(() => App.music.count())) === 8, '곡 수 8');
+  const seq = [];
+  for (let k = 0; k < 8; k++) {
+    await p.tap('a.back'); await p.waitForTimeout(250);
+    await p.goto(URL + '#cubes'); await p.waitForTimeout(350); await p.tap('.q-head'); await p.waitForTimeout(250);
+    seq.push(await p.evaluate(() => App.music.current()));
+  }
+  check(seq.every((x, i) => x >= 0 && (i === 0 || x !== seq[i - 1])) && new Set(seq).size >= 3, '들어갈 때마다 다른 곡: ' + seq.join(','));
+  for (let i = 0; i < 8; i++) {
+    await p.evaluate((i) => App.music._restartWith(i), i); await p.waitForTimeout(350);
+    const st = await p.evaluate(() => [App.music.playing(), App.music.current(), App.musicSongs[App.music.current()].title]);
+    check(st[0] && st[1] === i, '곡 ' + (i + 1) + ' 재생: ' + st[2]);
+  }
+  await p.evaluate(() => App.music.hurry(true)); await p.waitForTimeout(400);
+  check(await playing(p), '서두르기 상태에서도 계속 재생');
   // 2) 목록으로 나가면 멈춤
   await p.tap('a.back'); await p.waitForTimeout(500);
   check(!(await playing(p)), '게임 목록으로 나가면 멈춤');

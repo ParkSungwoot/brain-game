@@ -697,7 +697,7 @@
         h('span', { class: 'pill strong' }, st.ph === 'end' ? '대결 끝' : '라운드 ' + st.round + ' / ' + st.rounds),
         team ? [0, 1].map((t) => h('span', { class: 'pill team-pill t' + t }, TEAMS[t] + ' ', h('b', { class: 'mono' }, String(tp[t])))) : null,
         W.pl.map((p, i) => h('span', { class: 'pill' + (i === me ? ' me' : '') + (st.win === i && st.ph !== 'play' ? ' win' : '') },
-          h('span', { class: 'seat-dot' + (team ? ' t' + st.tm[i] : ''), style: team ? null : { background: `var(--p${i})` } }), p.n, ' ', h('b', { class: 'mono' }, String(st.pts[i])),
+          App.avatar.seat(W, i, 32, team ? 't' + st.tm[i] : ''), p.n, ' ', h('b', { class: 'mono' }, String(st.pts[i])),
           st.lockRem[i] > 0 && st.ph === 'play' ? h('span', { class: 'chip-tag warn' }, '잠김') : null))));
       if (st.ph === 'play') {
         if (def.prompt) g.append(def.prompt(L.pz));

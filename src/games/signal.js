@@ -307,7 +307,7 @@
           }
           keyHandler = onKey;
           const head = h('div', { class: 'duel-head' },
-            names.map((n, i) => h('span', { class: 'duel-name' + (i === me ? ' me' : '') }, h('span', { class: 'seat-dot', style: { background: `var(--p${i})` } }), n, i === me ? ' (나)' : '')),
+            names.map((n, i) => h('span', { class: 'duel-name' + (i === me ? ' me' : '') }, App.avatar.seat(W, i), n, i === me ? ' (나)' : '')),
             h('span', { class: 'turn-pill' }, st.ph === 'set' ? '수식 정하기' : st.ph === 'guess' ? st.turn + '턴' + (st.rematch ? ' · 재경기 ' + st.rematch : '') : '종료'));
           g.append(head);
 

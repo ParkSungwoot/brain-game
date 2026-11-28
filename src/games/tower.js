@@ -340,7 +340,7 @@
 
     g.append(h('div', { class: 'wl-head' },
       names.map((nm, i) => h('span', { class: 'wl-player' + (st.ph !== 'buzz' && active(i) ? ' turn' : '') },
-        h('span', { class: 'seat-dot', style: { background: `var(--p${i})` } }), nm, i === me ? ' (나)' : '',
+        App.avatar.seat(W, i), nm, i === me ? ' (나)' : '',
         h('b', { class: 'wl-score' }, st.pts[i] + '점'))),
       h('span', { class: 'pill' }, '라운드 ' + st.round + (st.ot ? ' · 연장' : '') + ' · ' + WIN + '점 먼저')));
 

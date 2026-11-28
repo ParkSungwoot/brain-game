@@ -288,7 +288,7 @@
 
     g.append(h('div', { class: 'wl-head' },
       [0, 1].map((i) => h('span', { class: 'wl-player' + (active(i) ? ' turn' : '') },
-        h('span', { class: 'seat-dot', style: { background: `var(--p${i})` } }), names[i], i === me ? ' (나)' : '', i === st.first ? h('span', { class: 'chip-tag' }, '선') : null,
+        App.avatar.seat(W, i), names[i], i === me ? ' (나)' : '', i === st.first ? h('span', { class: 'chip-tag' }, '선') : null,
         h('b', { class: 'wl-score' }, '●'.repeat(st.wins[i]) + '○'.repeat(Math.max(0, 2 - st.wins[i]))),
         active(i) ? h('span', { class: 'timer', 'data-timer-seat': i }) : null)),
       h('span', { class: 'pill' }, '라운드 ' + st.round + ' / ' + st.rounds + ' · 2판 먼저')));
@@ -344,7 +344,7 @@
       const rowFor = (seat) => {
         const hidden = st.qlen[seat];
         const mine = seat === me ? L.mine.slice(Math.max(0, L.mine.length - hidden)) : null;
-        return h('div', { class: 'jg-seq' }, h('span', { class: 'jg-seq-name' }, h('span', { class: 'seat-dot', style: { background: `var(--p${seat})` } }), names[seat] + (seat === me ? ' (나)' : '')),
+        return h('div', { class: 'jg-seq' }, h('span', { class: 'jg-seq-name' }, App.avatar.seat(W, seat), names[seat] + (seat === me ? ' (나)' : '')),
           h('div', { class: 'jg-seq-cards' },
             st.front[seat] != null ? cardEl(st.front[seat], { cls: 'cur' }) : h('div', { class: 'jg-card back' }, h('b', null, '배치 중')),
             Array.from({ length: hidden }, (_, k) => (mine && mine[k] != null ? cardEl(mine[k], { cls: 'secret' }) : h('div', { class: 'jg-card back' }, h('b', null, '?'))))));

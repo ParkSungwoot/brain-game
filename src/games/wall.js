@@ -348,11 +348,11 @@
     g.append(h('p', { class: 'wl-round' }, st.n === 3 ? (st.rnd === 1 ? '1라운드 · 3인전 (가장 넓은 사람 생존)' : '2라운드 · 1:1 (지면 탈락)') : '1:1'));
     g.append(h('div', { class: 'wl-head' },
       st.seats.map((i) => h('span', { class: 'wl-player' + (st.turn === i && (st.ph === 'place' || st.ph === 'move') ? ' turn' : '') + (i === me ? ' me' : '') },
-        h('span', { class: 'seat-dot', style: { background: `var(--p${i})` } }), seatName(names, i, me),
+        App.avatar.seat(W, i), seatName(names, i, me),
         h('b', { class: 'wl-score' }, String(sc.area[i])),
         st.rnd === 1 ? h('span', { class: 'chip-tag' + (st.brk[i] ? '' : ' used') }, st.brk[i] ? '💥 1' : '💥 0') : null,
         st.turn === i && (st.ph === 'place' || st.ph === 'move') ? h('span', { class: 'timer', 'data-timer-seat': i }) : null)),
-      st.n === 3 && st.rnd === 2 && st.r1 ? h('span', { class: 'wl-player done' }, h('span', { class: 'seat-dot', style: { background: `var(--p${st.r1.rank[0]})` } }), seatName(names, st.r1.rank[0], me) + ' · 생존 확정') : null));
+      st.n === 3 && st.rnd === 2 && st.r1 ? h('span', { class: 'wl-player done' }, App.avatar.seat(W, st.r1.rank[0]), seatName(names, st.r1.rank[0], me) + ' · 생존 확정') : null));
 
     // 라운드 사이
     if (st.ph === 'between' && st.r1) {

@@ -129,6 +129,7 @@
       this.code = code || null;
       this.onUpdate = onUpdate || (() => {});
       this.local = {}; // 게임 화면이 기억하는 내 쪽 정보 (낸 카드, 내 비밀 수식 등)
+      this.av = App.avatar ? App.avatar.mine() : null; // 내 픽셀 캐릭터 [모양, 색]
       this.status = 'connecting';
       this.error = null;
       this.seq = 0;
@@ -194,7 +195,7 @@
           if (other) { this.status = 'failed'; this.error = '같은 코드의 방이 이미 있어요. 다시 만들어 주세요.'; this._changed(); }
         }, 1800);
       } else {
-        await this.room.presence({ g: this.gameId, nick: this.nick, act: null });
+        await this.room.presence({ g: this.gameId, nick: this.nick, av: this.av, act: null });
         this.findTimer = setTimeout(() => {
           if (!this.W && !this.closed) { this.status = 'nohost'; this.error = '그 코드의 방을 찾지 못했어요. 코드를 다시 확인해 주세요. 코드가 맞다면, 방장과 내가 모두 로그인해 있고 페이지 주인에게 초대받은 계정인지 확인해 주세요.'; this._changed(); }
         }, 6000);
@@ -208,7 +209,7 @@
       const e = this.engine;
       this.W = {
         g: this.gameId, ph: 'lobby', v: 0,
-        pl: [{ p: this.myPeer || 'host', n: this.nick, b: 0, on: 1, tm: 0 }],
+        pl: [{ p: this.myPeer || 'host', n: this.nick, b: 0, on: 1, tm: 0, a: this.av }],
         o: Object.assign({}, e.defaultOpts || {}),
         s: null, ak: [], er: null, dl: [], res: null,
       };
@@ -243,10 +244,12 @@
         if (W.pl.length !== before) changed = true;
         // 새로 온 사람 넣기
         for (const [peer, p] of present) {
-          if (!W.pl.some((x) => x.p === peer) && W.pl.length < this.engine.maxPlayers) {
-            W.pl.push({ p: peer, n: App.cleanNick(p.presence.nick), b: 0, on: 1, tm: this._nextTeam() });
+          const av = App.avatar && App.avatar.valid(p.presence.av) ? p.presence.av.slice() : null;
+          const x = W.pl.find((q) => q.p === peer);
+          if (!x && W.pl.length < this.engine.maxPlayers) {
+            W.pl.push({ p: peer, n: App.cleanNick(p.presence.nick), b: 0, on: 1, tm: this._nextTeam(), a: av || this._randomAv() });
             changed = true;
-          }
+          } else if (x && av && (!x.a || x.a[0] !== av[0] || x.a[1] !== av[1])) { x.a = av; changed = true; } // 로비에서 캐릭터를 바꿈
         }
       } else {
         // 게임 중: 연결 상태 갱신 (끊기면 컴퓨터가 대신 둡니다)
@@ -419,8 +422,21 @@
       const names = e.botNames || ['컴퓨터 A', '컴퓨터 B', '컴퓨터 C', '컴퓨터 D', '컴퓨터 E', '컴퓨터 F', '컴퓨터 G'];
       const used = new Set(W.pl.map((x) => x.n));
       const n = names.find((x) => !used.has(x)) || '컴퓨터';
-      W.pl.push({ p: 'bot' + rid().slice(0, 6), n, b: 1, on: 1, tm: this._nextTeam() });
+      W.pl.push({ p: 'bot' + rid().slice(0, 6), n, b: 1, on: 1, tm: this._nextTeam(), a: this._randomAv() });
       if (!silent) this._publish();
+    }
+    // 방 안의 다른 캐릭터와 겹치지 않게 무작위
+    _randomAv() { return App.avatar ? App.avatar.random(this.W.pl.map((x) => x.a)) : null; }
+    // 내 캐릭터 바꾸기 (로비에서): 방장·혼자면 바로 반영, 참가자면 방장에게 알림
+    setMyAvatar(a) {
+      if (!App.avatar || !App.avatar.valid(a)) return;
+      this.av = a.slice();
+      const W = this.W;
+      if (this.isHost) {
+        if (W && W.ph === 'lobby' && W.pl[0]) { W.pl[0].a = a.slice(); this._publish(); }
+      } else if (this.room) {
+        this.room.presence({ av: a.slice() }).catch(() => {});
+      }
     }
     // 팀전: 인원이 적은 팀으로 넣음
     _nextTeam() { const c = [0, 0]; for (const x of this.W.pl) c[x.tm ? 1 : 0]++; return c[0] <= c[1] ? 0 : 1; }
@@ -536,6 +552,7 @@
       h('p', { class: 'announce-head' }, '📢 안내 방송'),
       h('ul', { class: 'announce-list' }, order.map((i) => h('li', { class: 'ann ' + places[i] + (i === mySeat ? ' me' : '') },
         h('span', { class: 'ann-tag' }, PLACES[places[i]][0]),
+        App.avatar ? App.avatar.seat(W, i) : null,
         h('span', null, h('b', null, W.pl[i].n), '님은 지금 바로 ', h('b', { class: 'ann-place' }, PLACES[places[i]][1]), ' 이동해주시기 바랍니다.')))),
       W.res.exileHow === 'lot' ? h('p', { class: 'note' }, '꼴찌가 동점이라 추첨으로 유배지 한 명을 정했어요.')
         : W.res.exileHow === 'tb' ? h('p', { class: 'note' }, '꼴찌가 동점이라 오답이 더 많은 사람이 유배지로 가요.') : null);
@@ -606,9 +623,26 @@
           h('p', null, '이 기기에서 컴퓨터 플레이어와 바로 시작합니다.'),
           h('button', { class: 'btn primary', onclick: () => { App.store.set('nick', nickInput.value); startSession('local'); } }, '바로 시작')) : null;
 
+        let avBox = null;
+        if (App.avatar) {
+          // 내 캐릭터: 평소엔 한 줄로, 「바꾸기」를 누르면 고르기 판 (판 안에 닫기)
+          avBox = h('div', { class: 'av-mine' });
+          let open = false;
+          const paintAv = () => {
+            App.clear(avBox);
+            const a = App.avatar.mine();
+            if (open) { avBox.append(App.avatar.picker(a, null, { compact: true, onClose: () => { open = false; paintAv(); } })); return; }
+            avBox.append(h('div', { class: 'av-mine-row' },
+              h('span', { class: 'av-chip big' }, App.avatar.svg(a, 32, '내 캐릭터: ' + App.avatar.nameOf(a))),
+              h('span', { class: 'av-mine-text' }, h('span', { class: 'note' }, '내 캐릭터'), h('b', null, App.avatar.nameOf(a))),
+              h('button', { class: 'btn tiny', type: 'button', onclick: () => { open = true; paintAv(); } }, '바꾸기')));
+          };
+          paintAv();
+        }
         view.append(
           h('div', { class: 'mp-choose' },
             h('label', { class: 'field', for: cfg.gameId + '-nick' }, h('span', null, '내 닉네임'), nickInput),
+            avBox,
             h('div', { class: 'mode-grid' },
               soloCard,
               h('div', { class: 'mode-card' },
@@ -656,7 +690,7 @@
           if (p) {
             cells.push(h('li', { class: 'seat' + (i === s.mySeat ? ' me' : '') + (fresh.has(p.p) ? ' pop' : ''), style: { '--pc': `var(--p${i % 7})` } },
               h('span', { class: 'seat-no' }, 'P' + (i + 1)),
-              h('span', { class: 'seat-face', 'aria-hidden': 'true' }, p.b ? '🤖' : (Array.from(p.n)[0] || '?')),
+              h('span', { class: 'seat-face' + (App.avatar && App.avatar.valid(p.a) ? ' av' : ''), 'aria-hidden': 'true' }, App.avatar && App.avatar.valid(p.a) ? App.avatar.svg(p.a, 48) : (p.b ? '🤖' : (Array.from(p.n)[0] || '?'))),
               h('span', { class: 'seat-name' }, p.n),
               h('span', { class: 'seat-tags' },
                 i === 0 && s.mode !== 'local' ? tag('방장') : null,
@@ -664,6 +698,7 @@
                 p.b ? tag('컴퓨터') : null,
                 !p.on ? tag('연결 끊김', 'warn') : null),
               cfg.seatExtra ? cfg.seatExtra(s, i, p) : null,
+              i === s.mySeat && W.ph === 'lobby' && App.avatar ? h('button', { class: 'btn tiny ghost av-change', 'aria-expanded': s._avOpen ? 'true' : 'false', onclick: () => { s._avOpen = !s._avOpen; render(s); } }, s._avOpen ? '닫기' : '캐릭터 바꾸기') : null,
               s.isHost && i !== 0 && W.ph === 'lobby' ? h('button', { class: 'btn tiny ghost seat-x', onclick: () => s.removeSeat(i), 'aria-label': p.n + ' 빼기' }, '빼기') : null));
           } else {
             cells.push(h('li', { class: 'seat empty' },
@@ -735,6 +770,10 @@
                 : '방장이 「게임 시작」을 누르면 바로 시작돼요.')));
           }
           box.append(h('h4', { class: 'sub lobby-head' }, h('span', null, s.mode === 'local' ? '참가자' : '자리'), h('span', { class: 'mono' }, W.pl.length + ' / ' + e.maxPlayers)), seatGrid(s));
+          if (s._avOpen && App.avatar && s.mySeat >= 0) {
+            const cur = W.pl[s.mySeat] && W.pl[s.mySeat].a;
+            box.append(h('div', { class: 'av-lobby' }, App.avatar.picker(cur || s.av, (a) => s.setMyAvatar(a), { compact: true, onClose: () => { s._avOpen = false; render(s); } })));
+          }
           if (s.isHost) {
             if (cfg.renderOptions) { const o = h('div', { class: 'opts' }); cfg.renderOptions(o, s, false); box.append(o); }
             const ok = W.pl.length >= e.minPlayers;

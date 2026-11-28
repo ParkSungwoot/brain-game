@@ -264,7 +264,7 @@
           const r = st.rev.find((x) => x[0] === seat);
           const done = st.placed.includes(seat);
           return h('li', { class: 'rev' + (seat === st.cur ? ' cur' : '') + (done ? ' done' : '') },
-            h('span', { class: 'seat-dot', style: { background: `var(--p${seat})` } }),
+            App.avatar.seat(W, seat),
             h('span', { class: 'pname' }, names[seat]),
             h('span', { class: 'card-mini' }, String(r[1])),
             h('span', { class: 'chip-mini c' + r[2] }, COLORS[r[2]]),
@@ -322,7 +322,7 @@
         const cards = [];
         for (let c = 0; c <= 6; c++) if (st.cards[i] & (1 << c)) cards.push(c);
         return h('tr', { class: i === me ? 'me' : '' },
-          h('td', null, h('span', { class: 'seat-dot', style: { background: `var(--p${i})` } }), ' ', p.n, i === st.first ? h('span', { class: 'chip-tag' }, '선') : null, !p.on ? h('span', { class: 'chip-tag warn' }, '끊김') : null),
+          h('td', null, App.avatar.seat(W, i), ' ', p.n, i === st.first ? h('span', { class: 'chip-tag' }, '선') : null, !p.on ? h('span', { class: 'chip-tag warn' }, '끊김') : null),
           h('td', { class: 'num' }, String(st.pen[i])),
           h('td', { class: 'mono' }, cards.join(' ') || '—'),
           h('td', null, h('div', { class: 'chips-cell' }, st.chips[i].map((c, k) => (c ? h('span', { class: 'chip-dot c' + k, title: COLORS[k] + ' ' + c + '개' }, c > 1 ? String(c) : '') : null)))),

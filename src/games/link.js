@@ -387,7 +387,7 @@
 
     g.append(h('div', { class: 'wl-head' },
       [0, 1].map((i) => h('span', { class: 'wl-player' + (active(i) ? ' turn' : '') },
-        h('span', { class: 'seat-dot', style: { background: `var(--p${i})` } }), names[i], i === me ? ' (나)' : '', i === st.rfirst ? h('span', { class: 'chip-tag' }, '선') : null,
+        App.avatar.seat(W, i), names[i], i === me ? ' (나)' : '', i === st.rfirst ? h('span', { class: 'chip-tag' }, '선') : null,
         h('b', { class: 'wl-score' }, String(st.pts[i])),
         active(i) ? h('span', { class: 'timer', 'data-timer-seat': i }) : null)),
       h('span', { class: 'pill' }, '라운드 ' + st.round + ' · 먼저 ' + st.target + '점'),
